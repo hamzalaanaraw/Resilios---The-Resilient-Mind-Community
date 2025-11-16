@@ -1,0 +1,17 @@
+{
+  "hosting": {
+    "site": "resilios-5a5f3-40459",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

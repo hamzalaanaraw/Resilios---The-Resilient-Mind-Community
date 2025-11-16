@@ -1,13 +1,15 @@
 
+
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { IMAGES } from '../constants';
+import { GoogleAuthIcon } from './Icons';
 
 export const AuthScreen: React.FC = () => {
   const { login } = useAuth();
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
+    <div className="min-h-screen bg-white flex items-center justify-center p-4">
       <div className="w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 shadow-2xl rounded-2xl overflow-hidden">
         
         {/* Brand & Visuals Panel */}
@@ -32,9 +34,10 @@ export const AuthScreen: React.FC = () => {
           <div className="mt-8">
             <button
               onClick={login}
-              className="w-full px-6 py-3 text-lg font-semibold text-white bg-sky-500 rounded-lg shadow-md hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-transform transform hover:scale-105"
+              className="w-full px-6 py-3 text-lg font-semibold text-slate-700 bg-white rounded-lg shadow-md hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-transform transform hover:scale-105 flex items-center justify-center gap-3 border border-slate-200"
             >
-              Login as Demo User
+              <GoogleAuthIcon />
+              Sign in with Google
             </button>
           </div>
           <p className="mt-8 text-xs text-slate-400 text-center">

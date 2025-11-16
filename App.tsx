@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { GoogleGenAI, LiveSession, LiveServerMessage, Modality } from "@google/genai";
+import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Type } from "@google/genai";
 import { Header } from './components/Header';
 import { ChatWindow } from './components/ChatWindow';
 import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
 import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData } from './types';
-import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, LIVE_SYSTEM_PROMPT, displaySticker } from './constants';
+import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, LIVE_SYSTEM_PROMPT, STICKERS, displaySticker } from './constants';
 import { Nav } from './components/Nav';
 import { createBlob, decode, decodeAudioData } from './utils/audio';
 import { useAuth } from './contexts/AuthContext';
@@ -105,12 +105,13 @@ const App: React.FC = () => {
   // Effect to load user data on login
   useEffect(() => {
     if (user) {
-      console.log(`Logged in as ${user.email}. Loading data...`);
+      const userName = user.displayName || user.email?.split('@')[0] || 'friend';
       // Reset non-persistent state on login, but keep persisted state from localStorage
       setMessages([
         {
+          id: crypto.randomUUID(),
           role: 'model',
-          text: `Welcome back, ${user.email.split('@')[0]}! I'm here to listen. How are you feeling today?`,
+          text: `Welcome back, ${userName}! I'm here to listen. How are you feeling today?`,
           timestamp: new Date(),
         },
       ]);
@@ -131,6 +132,54 @@ const App: React.FC = () => {
   }, [isPremium]);
 
 
+  const getStickerSuggestions = useCallback(async (text: string): Promise<string[]> => {
+    if (!ai.current || !text.trim()) return [];
+
+    try {
+        const stickerNames = Object.keys(STICKERS);
+
+        const prompt = `Analyze the following message from a mental health chatbot. Suggest up to 3 stickers a user could send as a quick reply. The reply should match the emotion or topic of the chatbot's message.
+Message: "${text}"
+Available stickers: ${stickerNames.join(', ')}
+Respond with a JSON object containing a 'suggestions' key with an array of sticker names.`;
+
+        const responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                suggestions: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.STRING,
+                        enum: stickerNames,
+                    }
+                }
+            },
+            required: ['suggestions'],
+        };
+
+        const result = await ai.current.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: responseSchema,
+            }
+        });
+
+        const jsonString = result.text.trim();
+        const parsed = JSON.parse(jsonString);
+        
+        if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+            // Return unique suggestions
+            return [...new Set(parsed.suggestions as string[])];
+        }
+
+    } catch (error) {
+        console.error("Error getting sticker suggestions:", error);
+    }
+    return [];
+  }, []);
+
   const handleSendMessage = useCallback(async (text: string, options: {
     attachment?: Attachment,
     isSearchEnabled?: boolean,
@@ -146,6 +195,7 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     const userMessage: Message = {
+      id: crypto.randomUUID(),
       role: 'user',
       text,
       timestamp: new Date(),
@@ -161,7 +211,7 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, userMessage]);
 
     if (!ai.current) {
-      setMessages(prev => [...prev, { role: 'model', text: "Sorry, the chat service isn't available right now.", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, the chat service isn't available right now.", timestamp: new Date() }]);
       setIsLoading(false);
       return;
     }
@@ -212,6 +262,7 @@ const App: React.FC = () => {
       }
 
       const modelMessage: Message = {
+        id: crypto.randomUUID(),
         role: 'model',
         text: result.text,
         timestamp: new Date(),
@@ -220,9 +271,23 @@ const App: React.FC = () => {
       };
       
       setMessages(prev => [...prev, modelMessage]);
+
+      // Asynchronously fetch and add sticker suggestions
+      if (result.text) {
+        getStickerSuggestions(result.text).then(suggestions => {
+          if (suggestions.length > 0) {
+            setMessages(prev => prev.map(m =>
+              m.id === modelMessage.id
+                ? { ...m, suggestedStickers: suggestions }
+                : m
+            ));
+          }
+        });
+      }
     } catch (error) {
       console.error("Error sending message to Gemini:", error);
       const errorMessage: Message = {
+        id: crypto.randomUUID(),
         role: 'model',
         text: "I'm having a little trouble connecting right now. Please try again in a moment.",
         timestamp: new Date(),
@@ -231,7 +296,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [wellnessPlan]);
+  }, [wellnessPlan, getStickerSuggestions]);
 
   const handleWellnessPlanChange = (newPlan: WellnessPlanData) => {
     setWellnessPlan(newPlan);
@@ -239,7 +304,7 @@ const App: React.FC = () => {
 
   const handleGenerateJournalPrompts = async () => {
     if (!ai.current) {
-        setMessages(prev => [...prev, { role: 'model', text: "Sorry, the AI service isn't available right now.", timestamp: new Date() }]);
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, the AI service isn't available right now.", timestamp: new Date() }]);
         return;
     }
     setIsGeneratingPrompts(true);
@@ -475,7 +540,7 @@ ${JSON.stringify(wellnessPlan)}
                           updatedMessages[prev.length - 1] = { ...last, text: currentInputTranscription };
                           return updatedMessages;
                       }
-                      return [...prev, { role: 'user', text: currentInputTranscription, timestamp: new Date(), isLiveTranscription: true }];
+                      return [...prev, { id: crypto.randomUUID(), role: 'user', text: currentInputTranscription, timestamp: new Date(), isLiveTranscription: true }];
                   });
                 }
 
@@ -488,7 +553,7 @@ ${JSON.stringify(wellnessPlan)}
                             updatedMessages[prev.length - 1] = { ...last, text: currentOutputTranscription };
                             return updatedMessages;
                         }
-                        return [...prev, { role: 'model', text: currentOutputTranscription, timestamp: new Date(), isLiveTranscription: true }];
+                        return [...prev, { id: crypto.randomUUID(), role: 'model', text: currentOutputTranscription, timestamp: new Date(), isLiveTranscription: true }];
                     });
                 }
                 

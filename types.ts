@@ -17,6 +17,7 @@ export interface Attachment {
 }
 
 export interface Message {
+  id: string;
   role: MessageRole;
   text: string;
   timestamp: Date;
@@ -25,6 +26,7 @@ export interface Message {
   isLiveTranscription?: boolean;
   sticker?: string;
   wasDeepThinking?: boolean;
+  suggestedStickers?: string[];
 }
 
 export interface WellnessPlanSection {
@@ -51,7 +53,8 @@ export interface CheckInData {
 export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'timeChart';
 
 export interface User {
-  id: string;
-  email: string;
-  isPremium: boolean;
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
 }
