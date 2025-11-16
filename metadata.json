@@ -1,0 +1,8 @@
+{
+  "name": "Resilios: AI Mental Wellness Companion",
+  "description": "An AI-powered mental wellness companion that helps users build their personalized 'operating manual' for mental health through proactive planning, evidence-based coping skills, and empathetic support.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
