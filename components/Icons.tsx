@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const SpeakerphoneIcon = () => (
@@ -126,5 +127,18 @@ export const GoogleAuthIcon = () => (
         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.8 0-5.2-1.89-6.06-4.44H2.35v2.84C4.01 20.48 7.72 23 12 23z" fill="#34A853" />
         <path d="M5.94 14.06c-.19-.58-.3-1.19-.3-1.81s.11-1.23.3-1.81V7.61H2.35c-.66 1.32-1.05 2.8-1.05 4.44s.39 3.12 1.05 4.44l3.59-2.84z" fill="#FBBC05" />
         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.72 1 4.01 3.52 2.35 6.75l3.59 2.84c.86-2.55 3.26-4.44 6.06-4.44z" fill="#EA4335" />
+    </svg>
+);
+
+export const CreditCardIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+    </svg>
+);
+
+export const WaveformHistoryIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l2-3 2 4 2-5 2 4" />
     </svg>
 );

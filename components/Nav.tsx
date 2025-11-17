@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from '../types';
-import { AvatarSparkIcon, ChartBarIcon, LockIcon, MapIcon } from './Icons';
+import { AvatarSparkIcon, ChartBarIcon, LockIcon, MapIcon, WaveformHistoryIcon } from './Icons';
 
 interface NavProps {
   activeView: View;
@@ -120,6 +120,9 @@ export const Nav: React.FC<NavProps> = ({ activeView, setView, onCheckInClick, o
             >
               Live Avatar
               {!isPremium && <span className="absolute right-4 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-xs font-semibold text-amber-800 bg-amber-200 rounded-full">PRO</span>}
+            </NavButton>
+             <NavButton onClick={() => handleAction(() => setView('liveHistory'))} isActive={activeView === 'liveHistory'} icon={<WaveformHistoryIcon />}>
+              Voice History
             </NavButton>
             <div className="px-4 pt-4 mt-4 border-t border-slate-200 space-y-4">
                  <div className={`p-3 rounded-lg flex items-center ${moodIndicator.color} transition-colors`}>

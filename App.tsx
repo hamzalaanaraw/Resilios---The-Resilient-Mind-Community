@@ -5,10 +5,10 @@ import { ChatWindow } from './components/ChatWindow';
 import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
-import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData } from './types';
+import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation } from './types';
 import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, LIVE_SYSTEM_PROMPT, STICKERS, displaySticker } from './constants';
 import { Nav } from './components/Nav';
-import { createBlob, decode, decodeAudioData } from './utils/audio';
+import { decode, decodeAudioData } from './utils/audio';
 import { useAuth } from './contexts/AuthContext';
 import { AuthScreen } from './components/AuthScreen';
 import { SubscriptionModal } from './components/SubscriptionModal';
@@ -19,6 +19,7 @@ import { MissionPage } from './components/MissionPage';
 import { ContactPage } from './components/ContactPage';
 import { PoliciesPage } from './components/PoliciesPage';
 import { Footer } from './components/Footer';
+import { LiveHistoryPage } from './components/LiveHistoryPage';
 
 
 // A simple client-side check for crisis phrases.
@@ -34,7 +35,7 @@ const loadFromLocalStorage = (key: string, defaultValue: any, parseDates: boolea
     const parsed = JSON.parse(saved);
     if (parseDates && Array.isArray(parsed)) {
       // JSON stringifies dates as strings, so we need to convert them back to Date objects
-      return parsed.map((item: any) => ({ ...item, date: new Date(item.date) }));
+      return parsed.map((item: any) => ({ ...item, date: new Date(item.date), timestamp: item.timestamp ? new Date(item.timestamp) : undefined }));
     }
     return parsed;
   } catch (error) {
@@ -61,6 +62,10 @@ const App: React.FC = () => {
   const [checkInHistory, setCheckInHistory] = useState<CheckInData[]>(() => loadFromLocalStorage('checkInHistory', [], true));
   const [aiInsights, setAiInsights] = useState('');
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  
+  // Voice History state
+  const [liveHistory, setLiveHistory] = useState<LiveConversation[]>(() => loadFromLocalStorage('liveHistory', [], true));
+
 
   // Nav state
   const [isNavOpen, setIsNavOpen] = useState(false);
@@ -69,17 +74,6 @@ const App: React.FC = () => {
   const [isMapLoading, setIsMapLoading] = useState(false);
   const [mapResults, setMapResults] = useState<GroundingChunk[]>([]);
   const [mapUserLocation, setMapUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
-
-  // Live API State
-  const [isVoiceChatActive, setVoiceChatActive] = useState(false);
-  const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  
-  const [liveSticker, setLiveSticker] = useState<string | null>(null);
-  const liveStickerTimeoutRef = useRef<number | null>(null);
-
 
   const ai = useRef<GoogleGenAI | null>(null);
   
@@ -100,6 +94,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('checkInHistory', JSON.stringify(checkInHistory));
   }, [checkInHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('liveHistory', JSON.stringify(liveHistory));
+  }, [liveHistory]);
 
   useEffect(() => {
     localStorage.setItem('latestMood', JSON.stringify(latestMood));
@@ -445,6 +443,16 @@ ${JSON.stringify(wellnessPlan)}
     }
 };
 
+const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]) => {
+    if (transcript.length === 0) return;
+    const newConversation: LiveConversation = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        transcript: transcript,
+    };
+    setLiveHistory(prev => [...prev, newConversation]);
+}, []);
+
 
   const handleTextToSpeech = async (text: string) => {
      if (!ai.current) return null;
@@ -472,121 +480,6 @@ ${JSON.stringify(wellnessPlan)}
         console.error("TTS Error:", error);
      }
   };
-  
-   const toggleVoiceChat = useCallback(async () => {
-    if (!ai.current) return;
-    
-    if (isVoiceChatActive) {
-        setVoiceChatActive(false);
-        sessionPromiseRef.current?.then(session => session.close());
-        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-        scriptProcessorRef.current?.disconnect();
-        audioContextRef.current?.close();
-        sessionPromiseRef.current = null;
-        return;
-    }
-
-    setVoiceChatActive(true);
-
-    const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    let nextStartTime = 0;
-    const sources = new Set<AudioBufferSourceNode>();
-    let currentInputTranscription = '';
-    let currentOutputTranscription = '';
-
-    sessionPromiseRef.current = ai.current.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        callbacks: {
-            onopen: async () => {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaStreamRef.current = stream;
-                const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-                audioContextRef.current = inputAudioContext;
-                const source = inputAudioContext.createMediaStreamSource(stream);
-                const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
-                scriptProcessorRef.current = scriptProcessor;
-
-                scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-                    const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                    const pcmBlob = createBlob(inputData);
-                    sessionPromiseRef.current?.then((session) => {
-                        session.sendRealtimeInput({ media: pcmBlob });
-                    });
-                };
-                source.connect(scriptProcessor);
-                scriptProcessor.connect(inputAudioContext.destination);
-            },
-            onmessage: async (message: LiveServerMessage) => {
-                const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-                if (base64Audio) {
-                    nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
-                    const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
-                    const source = outputAudioContext.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(outputAudioContext.destination);
-                    source.addEventListener('ended', () => sources.delete(source));
-                    source.start(nextStartTime);
-                    nextStartTime += audioBuffer.duration;
-                }
-
-                if (message.serverContent?.interrupted) {
-                    sources.forEach(source => source.stop());
-                    sources.clear();
-                    nextStartTime = 0;
-                }
-
-                if (message.serverContent?.inputTranscription) {
-                  currentInputTranscription += message.serverContent.inputTranscription.text;
-                  setMessages(prev => {
-                      const last = prev[prev.length - 1];
-                      if (last?.role === 'user' && last.isLiveTranscription) {
-                          const updatedMessages = [...prev];
-                          updatedMessages[prev.length - 1] = { ...last, text: currentInputTranscription };
-                          return updatedMessages;
-                      }
-                      return [...prev, { id: crypto.randomUUID(), role: 'user', text: currentInputTranscription, timestamp: new Date(), isLiveTranscription: true }];
-                  });
-                }
-
-                if (message.serverContent?.outputTranscription) {
-                    currentOutputTranscription += message.serverContent.outputTranscription.text;
-                    setMessages(prev => {
-                        const last = prev[prev.length - 1];
-                        if (last?.role === 'model' && last.isLiveTranscription) {
-                            const updatedMessages = [...prev];
-                            updatedMessages[prev.length - 1] = { ...last, text: currentOutputTranscription };
-                            return updatedMessages;
-                        }
-                        return [...prev, { id: crypto.randomUUID(), role: 'model', text: currentOutputTranscription, timestamp: new Date(), isLiveTranscription: true }];
-                    });
-                }
-                
-                if (message.serverContent?.turnComplete) {
-                   setMessages(prev => prev.map(msg => ({ ...msg, isLiveTranscription: false })));
-                   currentInputTranscription = '';
-                   currentOutputTranscription = '';
-                }
-            },
-            onerror: (e) => {
-                console.error('Live session error:', e);
-                setVoiceChatActive(false);
-            },
-            onclose: () => {
-                console.log('Live session closed');
-                setVoiceChatActive(false);
-            },
-        },
-        config: {
-            responseModalities: [Modality.AUDIO],
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
-            systemInstruction: LIVE_SYSTEM_PROMPT,
-            tools: [{functionDeclarations: [displaySticker]}]
-        },
-    });
-
-}, [isVoiceChatActive]);
-
 
   const renderView = () => {
     switch (view) {
@@ -596,8 +489,6 @@ ${JSON.stringify(wellnessPlan)}
                   onSendMessage={handleSendMessage}
                   isLoading={isLoading}
                   onTextToSpeech={handleTextToSpeech}
-                  isVoiceChatActive={isVoiceChatActive}
-                  toggleVoiceChat={toggleVoiceChat}
                   />;
       case 'plan':
         return <WellnessPlan 
@@ -621,7 +512,9 @@ ${JSON.stringify(wellnessPlan)}
                   isGenerating={isGeneratingInsights}
                 />;
       case 'liveAvatar':
-          return <LiveAvatarView />;
+          return <LiveAvatarView onSaveConversation={handleSaveLiveConversation} />;
+      case 'liveHistory':
+          return <LiveHistoryPage history={liveHistory} />;
       case 'mission':
           return <MissionPage />;
       case 'contact':
@@ -634,8 +527,6 @@ ${JSON.stringify(wellnessPlan)}
                   onSendMessage={handleSendMessage}
                   isLoading={isLoading}
                   onTextToSpeech={handleTextToSpeech}
-                  isVoiceChatActive={isVoiceChatActive}
-                  toggleVoiceChat={toggleVoiceChat}
                   />;
     }
   };

@@ -1,11 +1,18 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 // FIX: Added `onSubscribe` to the props interface to match the usage in App.tsx. This component is now presentational and no longer needs the AuthContext.
 interface SubscriptionModalProps {
   onClose: () => void;
   onSubscribe: () => void;
 }
+
+declare global {
+    interface Window {
+        paypal: any;
+    }
+}
+
 
 const FeatureListItem: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <li className="flex items-start">
@@ -15,6 +22,42 @@ const FeatureListItem: React.FC<{ children: React.ReactNode }> = ({ children }) 
 );
 
 export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ onClose, onSubscribe }) => {
+  const paypalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (window.paypal && paypalRef.current && paypalRef.current.childElementCount === 0) {
+        window.paypal.Buttons({
+            // This function is called when the buyer clicks the PayPal button.
+            // It sets up the details of the transaction, including the amount.
+            // For a real application, this would call your backend to create an order.
+            createOrder: (data: any, actions: any) => {
+                return actions.order.create({
+                    purchase_units: [{
+                        description: 'Resilios Premium Subscription',
+                        amount: {
+                            // Replace with your actual subscription price
+                            value: '9.99' 
+                        }
+                    }]
+                });
+            },
+            // This function is called after the buyer approves the transaction on PayPal.
+            // For a real application, this would call your backend to capture the payment.
+            onApprove: async (data: any, actions: any) => {
+                // const order = await actions.order.capture();
+                // console.log('Payment successful:', order);
+                
+                // For this app, we simulate success and call the subscribe function.
+                onSubscribe();
+            },
+            onError: (err: any) => {
+                console.error("PayPal Error:", err);
+                alert("An error occurred with your PayPal payment. Please try again.");
+            }
+        }).render(paypalRef.current);
+    }
+  }, [onSubscribe]);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md m-4 transform transition-all">
@@ -40,8 +83,17 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ onClose, o
           onClick={onSubscribe}
           className="w-full p-3 bg-sky-500 text-white rounded-lg font-semibold hover:bg-sky-600 transition"
         >
-          Subscribe Now
+          Subscribe Now (Card)
         </button>
+
+        <div className="mt-4 flex items-center">
+            <div className="flex-grow border-t border-slate-200"></div>
+            <span className="flex-shrink mx-4 text-slate-400 text-sm">OR</span>
+            <div className="flex-grow border-t border-slate-200"></div>
+        </div>
+
+        <div ref={paypalRef} className="mt-4"></div>
+
       </div>
     </div>
   );

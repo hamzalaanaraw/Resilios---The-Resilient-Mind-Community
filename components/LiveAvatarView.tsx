@@ -3,10 +3,16 @@ import { GoogleGenAI, LiveSession, LiveServerMessage, Modality } from "@google/g
 import { LIVE_SYSTEM_PROMPT, displaySticker, STICKERS } from '../constants';
 import { createBlob, decode, decodeAudioData } from '../utils/audio';
 import { MicrophoneIcon, StopIcon } from './Icons';
+import { LiveTranscriptPart } from '../types';
 
-export const LiveAvatarView: React.FC = () => {
+interface LiveAvatarViewProps {
+    onSaveConversation: (transcript: LiveTranscriptPart[]) => void;
+}
+
+
+export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversation }) => {
     const [isSessionActive, setIsSessionActive] = useState(false);
-    const [transcript, setTranscript] = useState('');
+    const [statusText, setStatusText] = useState('Click below to start a conversation.');
     const [sticker, setSticker] = useState<string | null>(null);
 
     const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
@@ -15,6 +21,7 @@ export const LiveAvatarView: React.FC = () => {
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
     const stickerTimeoutRef = useRef<number | null>(null);
     const ai = useRef<GoogleGenAI | null>(null);
+    const conversationRef = useRef<LiveTranscriptPart[]>([]);
 
     // Refs for the audio visualizer
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -127,26 +134,20 @@ export const LiveAvatarView: React.FC = () => {
     }, []);
 
     const handleToggleSession = useCallback(async () => {
+        if (isSessionActive) {
+            sessionPromiseRef.current?.then(session => session.close());
+            // The onclose callback will handle the rest of the cleanup.
+            return;
+        }
+
         if (!ai.current) {
             alert("AI service is not available.");
             return;
         }
 
-        if (isSessionActive) {
-            setIsSessionActive(false);
-            setTranscript('');
-            sessionPromiseRef.current?.then(session => session.close());
-            mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-            scriptProcessorRef.current?.disconnect();
-            audioContextRef.current?.close();
-            sessionPromiseRef.current = null;
-            if (stickerTimeoutRef.current) clearTimeout(stickerTimeoutRef.current);
-            stopVisualizer();
-            return;
-        }
-
         setIsSessionActive(true);
-        setTranscript('Connecting...');
+        setStatusText('Connecting...');
+        conversationRef.current = [];
 
         const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
         
@@ -159,12 +160,32 @@ export const LiveAvatarView: React.FC = () => {
         drawVisualizer();
         
         let nextStartTime = 0;
+        let currentInputText = '';
+        let currentModelText = '';
+
+        const closeSession = () => {
+            setIsSessionActive(false);
+            setStatusText('Click below to start a conversation.');
+            
+            mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+            scriptProcessorRef.current?.disconnect();
+            audioContextRef.current?.close();
+            sessionPromiseRef.current = null;
+            if (stickerTimeoutRef.current) clearTimeout(stickerTimeoutRef.current);
+            stopVisualizer();
+
+            // Save conversation
+            if (conversationRef.current.length > 0) {
+                onSaveConversation(conversationRef.current);
+            }
+            conversationRef.current = [];
+        };
 
         sessionPromiseRef.current = ai.current.live.connect({
             model: 'gemini-2.5-flash-native-audio-preview-09-2025',
             callbacks: {
                 onopen: async () => {
-                    setTranscript('Listening... say something!');
+                    setStatusText('Listening... say something!');
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     mediaStreamRef.current = stream;
                     const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -184,11 +205,24 @@ export const LiveAvatarView: React.FC = () => {
                     scriptProcessor.connect(inputAudioContext.destination);
                 },
                 onmessage: async (message: LiveServerMessage) => {
+                    if (message.serverContent?.inputTranscription?.text) {
+                       currentInputText += message.serverContent.inputTranscription.text;
+                       setStatusText(currentInputText);
+                    }
                     if (message.serverContent?.outputTranscription?.text) {
-                        setTranscript(prev => prev + message.serverContent.outputTranscription.text);
+                        currentModelText += message.serverContent.outputTranscription.text;
+                        setStatusText(currentModelText);
                     }
                      if (message.serverContent?.turnComplete) {
-                        setTranscript('');
+                        if (currentInputText.trim()) {
+                            conversationRef.current.push({ role: 'user', text: currentInputText.trim() });
+                        }
+                        if (currentModelText.trim()) {
+                            conversationRef.current.push({ role: 'model', text: currentModelText.trim() });
+                        }
+                        currentInputText = '';
+                        currentModelText = '';
+                        setStatusText('Listening...');
                     }
                     
                     if (message.toolCall?.functionCalls) {
@@ -219,25 +253,23 @@ export const LiveAvatarView: React.FC = () => {
                 },
                 onerror: (e) => {
                     console.error('Live session error:', e);
-                    setTranscript('Connection error. Please try again.');
-                    setIsSessionActive(false);
-                    stopVisualizer();
+                    setStatusText('Connection error. Please try again.');
+                    closeSession();
                 },
                 onclose: () => {
-                    setIsSessionActive(false);
-                    setTranscript('');
-                    stopVisualizer();
+                    closeSession();
                 },
             },
             config: {
                 responseModalities: [Modality.AUDIO],
+                inputAudioTranscription: {},
                 outputAudioTranscription: {},
                 systemInstruction: LIVE_SYSTEM_PROMPT,
                 tools: [{functionDeclarations: [displaySticker]}]
             },
         });
 
-    }, [isSessionActive, drawVisualizer, stopVisualizer]);
+    }, [isSessionActive, drawVisualizer, stopVisualizer, onSaveConversation]);
 
     return (
         <div className="h-full w-full flex flex-col items-center justify-center bg-sky-100 p-4">
@@ -263,7 +295,7 @@ export const LiveAvatarView: React.FC = () => {
             
             <div className="h-16 text-center">
                 <p className="text-slate-600 min-h-[2.5rem] px-4 py-2 bg-white/70 rounded-full transition-opacity duration-300">
-                    {transcript}
+                    {statusText}
                 </p>
             </div>
 

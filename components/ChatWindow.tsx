@@ -16,8 +16,6 @@ interface ChatWindowProps {
   }) => Promise<void>;
   isLoading: boolean;
   onTextToSpeech: (text: string) => void;
-  isVoiceChatActive: boolean;
-  toggleVoiceChat: () => void;
 }
 
 const ChatMessage: React.FC<{
@@ -164,7 +162,7 @@ const ToolbarToggle: React.FC<{
 );
 
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage, isLoading, onTextToSpeech, isVoiceChatActive, toggleVoiceChat }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage, isLoading, onTextToSpeech }) => {
   const [input, setInput] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
@@ -291,44 +289,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
             </div>
         )}
         <form onSubmit={handleSend} className="flex items-center space-x-3">
-            <button type="button" onClick={() => setStickerPickerOpen(p => !p)} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Open sticker picker" disabled={isVoiceChatActive}>
+            <button type="button" onClick={() => setStickerPickerOpen(p => !p)} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Open sticker picker">
                 <StickerIcon />
             </button>
             <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={isVoiceChatActive ? "Listening..." : "Type your message..."}
+                placeholder="Type your message..."
                 className="flex-1 p-3 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
-                disabled={isLoading || isVoiceChatActive}
+                disabled={isLoading}
             />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Attach file" disabled={isVoiceChatActive}>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Attach file">
                 <PaperclipIcon />
             </button>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
           
-          {showSendButton ? (
             <button
                 type="submit"
-                disabled={isLoading || isVoiceChatActive}
+                disabled={isLoading || !showSendButton}
                 className="p-3 bg-sky-500 text-white rounded-full disabled:bg-slate-300 hover:bg-sky-600 transition"
                 aria-label="Send message"
             >
-                <svg xmlns="http://www.w.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
                 </svg>
             </button>
-          ) : (
-             <button
-                type="button"
-                onClick={toggleVoiceChat}
-                disabled={isLoading}
-                className={`p-3 rounded-full transition ${isVoiceChatActive ? 'bg-red-500 text-white animate-pulse' : 'bg-sky-500 text-white hover:bg-sky-600'}`}
-                aria-label={isVoiceChatActive ? 'Stop voice chat' : 'Start voice chat'}
-            >
-                {isVoiceChatActive ? <StopIcon /> : <MicrophoneIcon />}
-            </button>
-          )}
 
         </form>
          <div className="mt-3 flex items-center justify-center">

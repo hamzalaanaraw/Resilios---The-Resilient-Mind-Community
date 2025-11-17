@@ -1,7 +1,7 @@
 import React from 'react';
 
 export const ContactPage: React.FC = () => {
-    const email = 'TheCommunity@Resilientmindco.com';
+    const email = 'Community@theresilientmindco.com';
     return (
         <div className="p-4 h-full flex items-center justify-center">
             <div className="max-w-lg mx-auto text-center">

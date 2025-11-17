@@ -50,7 +50,18 @@ export interface CheckInData {
   notes: string;
 }
 
-export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'timeChart' | 'mission' | 'contact' | 'policies';
+export interface LiveTranscriptPart {
+  role: 'user' | 'model';
+  text: string;
+}
+
+export interface LiveConversation {
+  id: string;
+  timestamp: Date;
+  transcript: LiveTranscriptPart[];
+}
+
+export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'timeChart' | 'mission' | 'contact' | 'policies' | 'liveHistory';
 
 export interface User {
   uid: string;

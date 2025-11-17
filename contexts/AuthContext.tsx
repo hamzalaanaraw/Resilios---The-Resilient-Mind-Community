@@ -21,6 +21,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
+  signUpForTrial: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
   subscribe: () => void;
 }
@@ -147,6 +148,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           handleAuthError(err);
       }
   };
+  
+  const signUpForTrial = async (email: string, password: string, displayName: string) => {
+    setLoading(true);
+    setError(null);
+    if (!displayName.trim()) {
+      setError("Display name cannot be empty.");
+      setLoading(false);
+      return;
+    }
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      if (userCredential.user) {
+          const firebaseUser = userCredential.user;
+          await updateProfile(firebaseUser, { displayName });
+          
+          // Grant premium status for the trial
+          localStorage.setItem(`premium_${firebaseUser.uid}`, 'true');
+          setIsPremium(true);
+
+          // This is needed to make the displayName available immediately after sign up
+          // as onAuthStateChanged can be slightly delayed.
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+          });
+      }
+    } catch (err: any) {
+        handleAuthError(err);
+    } finally {
+        // We manually set the user, so we can also manually stop loading
+        // to provide a faster UI transition.
+        setLoading(false);
+    }
+  };
 
   const logout = async () => {
     setLoading(true);
@@ -177,7 +214,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   return (
-    <AuthContext.Provider value={{ user, isPremium, loading, loginWithGoogle, loginWithEmail, signUp, logout, subscribe, error }}>
+    <AuthContext.Provider value={{ user, isPremium, loading, loginWithGoogle, loginWithEmail, signUp, signUpForTrial, logout, subscribe, error }}>
       {children}
     </AuthContext.Provider>
   );
