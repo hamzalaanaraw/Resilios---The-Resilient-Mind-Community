@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { GroundingChunk } from '../types';
 import { LocationMarkerIcon, SearchIcon } from './Icons';
@@ -8,15 +9,17 @@ interface MapComponentProps {
     isLoading: boolean;
     results: GroundingChunk[];
     userLocation: { latitude: number; longitude: number } | null;
+    initError: string | null;
 }
 
-export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading, results, userLocation }) => {
+export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading, results, userLocation, initError }) => {
     const [query, setQuery] = useState('mental health clinic');
 
     useEffect(() => {
         // Automatically trigger an initial search on component mount.
         // This will also trigger the browser's location permission prompt.
         onSearch(query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
 
@@ -40,10 +43,11 @@ export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading,
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="e.g., therapists, crisis center..."
                         className="flex-1 p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
+                        disabled={!!initError}
                     />
                     <button
                         type="submit"
-                        disabled={isLoading}
+                        disabled={isLoading || !!initError}
                         className="p-3 bg-sky-500 text-white rounded-lg disabled:bg-slate-300 hover:bg-sky-600 transition flex items-center justify-center"
                     >
                        {isLoading ? (
@@ -55,13 +59,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading,
                 </form>
 
                 <div className="w-full">
+                     {initError && <p className="text-red-600 text-center p-4 bg-red-50 border border-red-200 rounded-lg">{initError}</p>}
                      {isLoading && <p className="text-slate-500 text-center">Searching for resources near you...</p>}
                      
-                     {!isLoading && !userLocation && (
+                     {!isLoading && !userLocation && !initError && (
                         <p className="text-slate-500 text-center p-4 bg-amber-50 border border-amber-200 rounded-lg">Please allow location access in your browser to find local support centers.</p>
                      )}
 
-                     {!isLoading && userLocation && results.length === 0 && (
+                     {!isLoading && userLocation && results.length === 0 && !initError && (
                         <p className="text-slate-500 text-center">No results found for your search. Try a different term like "therapist" or "counseling".</p>
                      )}
                      

@@ -11,6 +11,7 @@ interface WellnessPlanProps {
   onPlanChange: (newPlan: WellnessPlanData) => void;
   onGeneratePrompts: () => Promise<void>;
   isGeneratingPrompts: boolean;
+  initError: string | null;
 }
 
 const MEDITATION_TRACKS = [
@@ -159,9 +160,10 @@ interface AccordionSectionProps {
   showGenerateButton?: boolean;
   onGenerateClick?: () => void;
   isGenerating?: boolean;
+  initError: string | null;
 }
 
-const AccordionSection: React.FC<AccordionSectionProps> = ({ section, isOpen, onToggle, onContentChange, sectionKey, showGenerateButton, onGenerateClick, isGenerating }) => {
+const AccordionSection: React.FC<AccordionSectionProps> = ({ section, isOpen, onToggle, onContentChange, sectionKey, showGenerateButton, onGenerateClick, isGenerating, initError }) => {
   return (
     <div className="border border-slate-200 rounded-lg mb-4 overflow-hidden">
       <button
@@ -187,7 +189,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ section, isOpen, on
             <div className="mb-4">
               <button
                 onClick={onGenerateClick}
-                disabled={isGenerating}
+                disabled={isGenerating || !!initError}
                 className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition-colors duration-150 bg-sky-500 text-white rounded-lg hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:bg-slate-400 disabled:cursor-not-allowed"
               >
                 {isGenerating ? (
@@ -219,7 +221,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ section, isOpen, on
   );
 };
 
-export const WellnessPlan: React.FC<WellnessPlanProps> = ({ plan, onPlanChange, onGeneratePrompts, isGeneratingPrompts }) => {
+export const WellnessPlan: React.FC<WellnessPlanProps> = ({ plan, onPlanChange, onGeneratePrompts, isGeneratingPrompts, initError }) => {
   const [openSection, setOpenSection] = useState<PlanKey | null>('toolbox');
 
   const handleToggle = (key: PlanKey) => {
@@ -254,6 +256,7 @@ export const WellnessPlan: React.FC<WellnessPlanProps> = ({ plan, onPlanChange, 
             showGenerateButton={key === 'journalPrompts'}
             onGenerateClick={onGeneratePrompts}
             isGenerating={isGeneratingPrompts}
+            initError={initError}
           />
         ))}
       </div>

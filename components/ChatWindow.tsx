@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message, Attachment } from '../types';
 import { IMAGES, STICKERS } from '../constants';
-import { fileToBase64, blobToBase64 } from '../utils/file';
-import { BrainIcon, CheckIcon, CopyIcon, GoogleIcon, LocationMarkerIcon, MicrophoneIcon, PaperclipIcon, SpeakerphoneIcon, StickerIcon, StopIcon, VideoCameraIcon } from './Icons';
+import { fileToBase64 } from '../utils/file';
+import { BrainIcon, CheckIcon, CopyIcon, GoogleIcon, LocationMarkerIcon, PaperclipIcon, SpeakerphoneIcon, StickerIcon, VideoCameraIcon } from './Icons';
 
 
 interface ChatWindowProps {
@@ -16,6 +16,7 @@ interface ChatWindowProps {
   }) => Promise<void>;
   isLoading: boolean;
   onTextToSpeech: (text: string) => void;
+  initError: string | null;
 }
 
 const ChatMessage: React.FC<{
@@ -154,15 +155,16 @@ const ToolbarToggle: React.FC<{
     label: string;
     children: React.ReactNode;
     title?: string;
-}> = ({ isActive, onClick, label, children, title }) => (
-    <button onClick={onClick} className={`flex items-center space-x-2 px-3 py-1.5 text-sm font-medium rounded-full transition-all duration-200 shadow-sm ${isActive ? 'bg-sky-500 text-white ring-2 ring-offset-2 ring-offset-white ring-sky-300' : 'bg-white text-slate-700 hover:bg-slate-50 ring-1 ring-inset ring-slate-200'}`} aria-label={label} title={title}>
+    disabled?: boolean;
+}> = ({ isActive, onClick, label, children, title, disabled=false }) => (
+    <button onClick={onClick} className={`flex items-center space-x-2 px-3 py-1.5 text-sm font-medium rounded-full transition-all duration-200 shadow-sm ${isActive ? 'bg-sky-500 text-white ring-2 ring-offset-2 ring-offset-white ring-sky-300' : 'bg-white text-slate-700 hover:bg-slate-50 ring-1 ring-inset ring-slate-200'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`} aria-label={label} title={title} disabled={disabled}>
         {children}
         <span>{label}</span>
     </button>
 );
 
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage, isLoading, onTextToSpeech }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage, isLoading, onTextToSpeech, initError }) => {
   const [input, setInput] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
@@ -264,6 +266,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
         <div ref={messagesEndRef} />
       </div>
       <div className="p-4 bg-white border-t border-slate-200 relative">
+        {initError && (
+          <div className="absolute inset-x-0 bottom-full mb-2 p-3 bg-red-100 border-t border-b border-red-200 text-red-800 text-sm text-center">
+            {initError}
+          </div>
+        )}
         {isStickerPickerOpen && (
             <div ref={stickerPickerRef} className="absolute bottom-full mb-2 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg p-2 grid grid-cols-4 md:grid-cols-6 gap-2 max-h-60 overflow-y-auto">
                 {Object.entries(STICKERS).map(([name, url]) => (
@@ -289,25 +296,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
             </div>
         )}
         <form onSubmit={handleSend} className="flex items-center space-x-3">
-            <button type="button" onClick={() => setStickerPickerOpen(p => !p)} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Open sticker picker">
+            <button type="button" onClick={() => setStickerPickerOpen(p => !p)} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Open sticker picker" disabled={!!initError}>
                 <StickerIcon />
             </button>
             <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
+                placeholder={initError ? "Chat is disabled due to a configuration issue." : "Type your message..."}
                 className="flex-1 p-3 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
-                disabled={isLoading}
+                disabled={isLoading || !!initError}
             />
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Attach file">
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3 text-slate-500 hover:text-sky-600 transition" aria-label="Attach file" disabled={!!initError}>
                 <PaperclipIcon />
             </button>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
           
             <button
                 type="submit"
-                disabled={isLoading || !showSendButton}
+                disabled={isLoading || !showSendButton || !!initError}
                 className="p-3 bg-sky-500 text-white rounded-full disabled:bg-slate-300 hover:bg-sky-600 transition"
                 aria-label="Send message"
             >
@@ -319,9 +326,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
         </form>
          <div className="mt-3 flex items-center justify-center">
             <div className="flex items-center space-x-2">
-               <ToolbarToggle isActive={isSearchEnabled} onClick={() => setIsSearchEnabled(p => !p)} label="Web Search"><GoogleIcon/></ToolbarToggle>
-               <ToolbarToggle isActive={!!userLocation} onClick={handleGetLocation} label="Location"><LocationMarkerIcon/></ToolbarToggle>
-               <ToolbarToggle isActive={isDeepThinkingEnabled} onClick={() => setIsDeepThinkingEnabled(p => !p)} label="Deeper Thinking" title="Uses a more advanced model for complex questions. May be slower."><BrainIcon/></ToolbarToggle>
+               <ToolbarToggle isActive={isSearchEnabled} onClick={() => setIsSearchEnabled(p => !p)} label="Web Search" disabled={!!initError}><GoogleIcon/></ToolbarToggle>
+               <ToolbarToggle isActive={!!userLocation} onClick={handleGetLocation} label="Location" disabled={!!initError}><LocationMarkerIcon/></ToolbarToggle>
+               <ToolbarToggle isActive={isDeepThinkingEnabled} onClick={() => setIsDeepThinkingEnabled(p => !p)} label="Deeper Thinking" title="Uses a more advanced model for complex questions. May be slower." disabled={!!initError}><BrainIcon/></ToolbarToggle>
             </div>
         </div>
       </div>

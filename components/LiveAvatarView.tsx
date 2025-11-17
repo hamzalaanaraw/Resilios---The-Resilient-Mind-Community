@@ -6,11 +6,12 @@ import { MicrophoneIcon, StopIcon } from './Icons';
 import { LiveTranscriptPart } from '../types';
 
 interface LiveAvatarViewProps {
+    ai: GoogleGenAI | null;
     onSaveConversation: (transcript: LiveTranscriptPart[]) => void;
 }
 
 
-export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversation }) => {
+export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ ai, onSaveConversation }) => {
     const [isSessionActive, setIsSessionActive] = useState(false);
     const [statusText, setStatusText] = useState('Click below to start a conversation.');
     const [sticker, setSticker] = useState<string | null>(null);
@@ -20,7 +21,6 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversati
     const audioContextRef = useRef<AudioContext | null>(null);
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
     const stickerTimeoutRef = useRef<number | null>(null);
-    const ai = useRef<GoogleGenAI | null>(null);
     const conversationRef = useRef<LiveTranscriptPart[]>([]);
 
     // Refs for the audio visualizer
@@ -29,9 +29,6 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversati
     const animationFrameIdRef = useRef<number | null>(null);
     
     useEffect(() => {
-        if (process.env.API_KEY) {
-            ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        }
         return () => {
             // Cleanup on unmount
             sessionPromiseRef.current?.then(session => session.close());
@@ -140,8 +137,8 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversati
             return;
         }
 
-        if (!ai.current) {
-            alert("AI service is not available.");
+        if (!ai) {
+            alert("AI service is not available or configured correctly.");
             return;
         }
 
@@ -181,7 +178,7 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversati
             conversationRef.current = [];
         };
 
-        sessionPromiseRef.current = ai.current.live.connect({
+        sessionPromiseRef.current = ai.live.connect({
             model: 'gemini-2.5-flash-native-audio-preview-09-2025',
             callbacks: {
                 onopen: async () => {
@@ -269,7 +266,7 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversati
             },
         });
 
-    }, [isSessionActive, drawVisualizer, stopVisualizer, onSaveConversation]);
+    }, [isSessionActive, ai, drawVisualizer, stopVisualizer, onSaveConversation]);
 
     return (
         <div className="h-full w-full flex flex-col items-center justify-center bg-sky-100 p-4">
@@ -301,7 +298,8 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversati
 
             <button
                 onClick={handleToggleSession}
-                className={`mt-6 px-8 py-4 rounded-full text-white font-bold text-lg shadow-lg transition-transform transform hover:scale-105 flex items-center gap-3 ${isSessionActive ? 'bg-red-500 hover:bg-red-600' : 'bg-sky-500 hover:bg-sky-600'}`}
+                disabled={!ai}
+                className={`mt-6 px-8 py-4 rounded-full text-white font-bold text-lg shadow-lg transition-all transform hover:scale-105 flex items-center gap-3 ${!ai ? 'bg-slate-400 cursor-not-allowed' : isSessionActive ? 'bg-red-500 hover:bg-red-600' : 'bg-sky-500 hover:bg-sky-600'}`}
                 aria-label={isSessionActive ? 'Stop Conversation' : 'Start Conversation'}
             >
                 {isSessionActive ? <StopIcon /> : <MicrophoneIcon />}
@@ -310,6 +308,11 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ onSaveConversati
              <p className="text-xs text-slate-400 mt-4">
                 This is a premium feature. The avatar provides a more immersive conversational experience.
             </p>
+             {!ai && (
+                <p className="text-xs text-red-500 mt-4 text-center">
+                    The Live Avatar service could not be initialized.<br />Please contact the administrator.
+                </p>
+            )}
         </div>
     );
 };

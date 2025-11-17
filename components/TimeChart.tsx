@@ -7,6 +7,7 @@ interface TimeChartProps {
   onGenerateInsights: () => void;
   insights: string;
   isGenerating: boolean;
+  initError: string | null;
 }
 
 const moodColors = {
@@ -72,7 +73,7 @@ const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     return <>{elements}</>;
 };
 
-export const TimeChart: React.FC<TimeChartProps> = ({ history, onGenerateInsights, insights, isGenerating }) => {
+export const TimeChart: React.FC<TimeChartProps> = ({ history, onGenerateInsights, insights, isGenerating, initError }) => {
   const chartRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstance = useRef<Chart | null>(null);
 
@@ -159,7 +160,7 @@ export const TimeChart: React.FC<TimeChartProps> = ({ history, onGenerateInsight
           <h3 className="text-2xl font-bold text-slate-800 mb-4">AI-Powered Insights</h3>
            <button
                 onClick={onGenerateInsights}
-                disabled={isGenerating || history.length < 3}
+                disabled={isGenerating || history.length < 3 || !!initError}
                 className="inline-flex items-center justify-center px-4 py-2 mb-4 text-sm font-medium transition-colors duration-150 bg-sky-500 text-white rounded-lg hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:bg-slate-400 disabled:cursor-not-allowed"
             >
                 {isGenerating ? (

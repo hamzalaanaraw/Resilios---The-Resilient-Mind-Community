@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Header } from './components/Header';
 import { ChatWindow } from './components/ChatWindow';
 import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
 import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation } from './types';
-import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, LIVE_SYSTEM_PROMPT, STICKERS, displaySticker } from './constants';
+import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, STICKERS, displaySticker } from './constants';
 import { Nav } from './components/Nav';
 import { decode, decodeAudioData } from './utils/audio';
 import { useAuth } from './contexts/AuthContext';
@@ -20,6 +20,7 @@ import { ContactPage } from './components/ContactPage';
 import { PoliciesPage } from './components/PoliciesPage';
 import { Footer } from './components/Footer';
 import { LiveHistoryPage } from './components/LiveHistoryPage';
+import { FunctionDeclaration, Modality, Type } from '@google/genai';
 
 
 // A simple client-side check for crisis phrases.
@@ -74,15 +75,24 @@ const App: React.FC = () => {
   const [isMapLoading, setIsMapLoading] = useState(false);
   const [mapResults, setMapResults] = useState<GroundingChunk[]>([]);
   const [mapUserLocation, setMapUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
-
+  
+  // AI Client State
+  const [initError, setInitError] = useState<string | null>(null);
   const ai = useRef<GoogleGenAI | null>(null);
   
   // Initialize AI client
   useEffect(() => {
     if (process.env.API_KEY) {
-      ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      try {
+        ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        setInitError(null);
+      } catch (e) {
+        console.error("Failed to initialize GoogleGenAI:", e);
+        setInitError("Could not initialize the AI service. The application may not function correctly.");
+      }
     } else {
       console.error("API_KEY environment variable not set.");
+      setInitError("The AI service has not been configured for this application. Please contact the administrator.");
     }
   }, []);
 
@@ -213,7 +223,7 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
     setMessages(prev => [...prev, userMessage]);
 
     if (!ai.current) {
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, the chat service isn't available right now.", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: initError || "Sorry, the chat service isn't available right now.", timestamp: new Date() }]);
       setIsLoading(false);
       return;
     }
@@ -259,7 +269,7 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
       if (functionCalls && functionCalls.length > 0) {
         const stickerCall = functionCalls.find(fc => fc.name === 'displaySticker');
         if (stickerCall) {
-            stickerName = stickerCall.args.stickerName;
+            stickerName = stickerCall.args.stickerName as string;
         }
       }
 
@@ -298,7 +308,7 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
     } finally {
       setIsLoading(false);
     }
-  }, [wellnessPlan, getStickerSuggestions]);
+  }, [wellnessPlan, getStickerSuggestions, initError]);
 
   const handleWellnessPlanChange = (newPlan: WellnessPlanData) => {
     setWellnessPlan(newPlan);
@@ -306,7 +316,14 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
 
   const handleGenerateJournalPrompts = async () => {
     if (!ai.current) {
-        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, the AI service isn't available right now.", timestamp: new Date() }]);
+        const updatedPlan = {
+             ...wellnessPlan,
+            journalPrompts: {
+                ...wellnessPlan.journalPrompts,
+                content: initError || "Sorry, I couldn't generate prompts right now. Please try again.",
+            }
+        };
+        handleWellnessPlanChange(updatedPlan);
         return;
     }
     setIsGeneratingPrompts(true);
@@ -343,7 +360,7 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
   
    const handleMapSearch = async (query: string) => {
     if (!ai.current) {
-        alert("Sorry, the map service isn't available right now.");
+        alert(initError || "Sorry, the map service isn't available right now.");
         return;
     }
     setIsMapLoading(true);
@@ -401,7 +418,7 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
   
   const handleGenerateInsights = async () => {
     if (!ai.current) {
-        setAiInsights("Sorry, the AI service isn't available right now.");
+        setAiInsights(initError || "Sorry, the AI service isn't available right now.");
         return;
     }
     if (checkInHistory.length < 3) {
@@ -489,6 +506,7 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
                   onSendMessage={handleSendMessage}
                   isLoading={isLoading}
                   onTextToSpeech={handleTextToSpeech}
+                  initError={initError}
                   />;
       case 'plan':
         return <WellnessPlan 
@@ -496,6 +514,7 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
                   onPlanChange={handleWellnessPlanChange}
                   onGeneratePrompts={handleGenerateJournalPrompts}
                   isGeneratingPrompts={isGeneratingPrompts}
+                  initError={initError}
                 />;
       case 'map':
         return <MapComponent
@@ -503,6 +522,7 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
                   isLoading={isMapLoading}
                   results={mapResults}
                   userLocation={mapUserLocation}
+                  initError={initError}
                 />;
        case 'timeChart':
         return <TimeChart
@@ -510,9 +530,10 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
                   onGenerateInsights={handleGenerateInsights}
                   insights={aiInsights}
                   isGenerating={isGeneratingInsights}
+                  initError={initError}
                 />;
       case 'liveAvatar':
-          return <LiveAvatarView onSaveConversation={handleSaveLiveConversation} />;
+          return <LiveAvatarView ai={ai.current} onSaveConversation={handleSaveLiveConversation} />;
       case 'liveHistory':
           return <LiveHistoryPage history={liveHistory} />;
       case 'mission':
@@ -527,6 +548,7 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
                   onSendMessage={handleSendMessage}
                   isLoading={isLoading}
                   onTextToSpeech={handleTextToSpeech}
+                  initError={initError}
                   />;
     }
   };
