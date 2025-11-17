@@ -1,14 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, LiveSession, LiveServerMessage, Modality } from "@google/genai";
-import { LIVE_SYSTEM_PROMPT, IMAGES, displaySticker, STICKERS } from '../constants';
+import { LIVE_SYSTEM_PROMPT, displaySticker, STICKERS } from '../constants';
 import { createBlob, decode, decodeAudioData } from '../utils/audio';
 import { MicrophoneIcon, StopIcon } from './Icons';
 
-type AvatarState = 'idle' | 'speaking';
-
 export const LiveAvatarView: React.FC = () => {
     const [isSessionActive, setIsSessionActive] = useState(false);
-    const [avatarState, setAvatarState] = useState<AvatarState>('idle');
     const [transcript, setTranscript] = useState('');
     const [sticker, setSticker] = useState<string | null>(null);
 
@@ -16,7 +13,6 @@ export const LiveAvatarView: React.FC = () => {
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-    const speakingTimeoutRef = useRef<number | null>(null);
     const stickerTimeoutRef = useRef<number | null>(null);
     const ai = useRef<GoogleGenAI | null>(null);
 
@@ -32,20 +28,9 @@ export const LiveAvatarView: React.FC = () => {
         return () => {
             // Cleanup on unmount
             sessionPromiseRef.current?.then(session => session.close());
-            if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
             if (stickerTimeoutRef.current) clearTimeout(stickerTimeoutRef.current);
             if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
         };
-    }, []);
-
-    // Set canvas dimensions on mount, accounting for device pixel ratio for sharpness
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (canvas) {
-            const { width, height } = canvas.getBoundingClientRect();
-            canvas.width = width * window.devicePixelRatio;
-            canvas.height = height * window.devicePixelRatio;
-        }
     }, []);
 
     const stopVisualizer = useCallback(() => {
@@ -65,49 +50,78 @@ export const LiveAvatarView: React.FC = () => {
 
         const analyser = analyserRef.current;
         const canvas = canvasRef.current;
-        const canvasCtx = canvas.getContext('2d');
-        if (!canvasCtx) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
+        analyser.fftSize = 256;
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
-
+        
+        const dpr = window.devicePixelRatio || 1;
+        const { width, height } = canvas.getBoundingClientRect();
+        if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+        }
+        
         const draw = () => {
             animationFrameIdRef.current = requestAnimationFrame(draw);
             analyser.getByteFrequencyData(dataArray);
             
-            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-            canvasCtx.save();
-            canvasCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.scale(dpr, dpr);
 
+            const average = dataArray.reduce((acc, val) => acc + val, 0) / bufferLength;
+            const corePulse = 1 + (average / 255) * 0.05;
 
-            const { width, height } = canvas.getBoundingClientRect();
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const radius = Math.min(centerX, centerY) * 0.85; 
-            const barWidth = 3;
-            const numBars = bufferLength * 0.7; 
-            const angleStep = (2 * Math.PI) / numBars;
-            
-            for (let i = 0; i < numBars; i++) {
-                const barHeight = Math.pow(dataArray[i] / 255, 2.5) * 80; 
-                if (barHeight < 2) continue;
+            // --- 1. Background static rings ---
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.1)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(width/2, height/2, Math.min(width, height) * 0.25, 0, 2 * Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(width/2, height/2, Math.min(width, height) * 0.4, 0, 2 * Math.PI);
+            ctx.stroke();
 
-                const angle = i * angleStep - Math.PI / 2;
-                
-                const x1 = centerX + Math.cos(angle) * radius;
-                const y1 = centerY + Math.sin(angle) * radius;
-                const x2 = centerX + Math.cos(angle) * (radius + barHeight);
-                const y2 = centerY + Math.sin(angle) * (radius + barHeight);
-
-                canvasCtx.beginPath();
-                canvasCtx.moveTo(x1, y1);
-                canvasCtx.lineTo(x2, y2);
-                canvasCtx.strokeStyle = `rgba(56, 189, 248, ${Math.max(0.2, dataArray[i] / 255)})`;
-                canvasCtx.lineWidth = barWidth;
-                canvasCtx.lineCap = 'round';
-                canvasCtx.stroke();
+            // --- 2. Main visualizer wave ---
+            const baseRadius = Math.min(width, height) * 0.3;
+            ctx.beginPath();
+            for (let i = 0; i <= 360; i += 5) {
+                const angle = (i * Math.PI) / 180;
+                const dataIndex = Math.floor((i / 360) * (bufferLength * 0.8));
+                const amplitude = Math.pow(dataArray[dataIndex] / 255, 2.5) * (baseRadius * 0.6);
+                const radius = baseRadius + amplitude;
+                const x = width/2 + Math.cos(angle) * radius;
+                const y = height/2 + Math.sin(angle) * radius;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
             }
-            canvasCtx.restore();
+            ctx.closePath();
+            
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+            ctx.shadowColor = 'rgba(56, 189, 248, 1)';
+            ctx.shadowBlur = 10;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // --- 3. Central pulsing orb ---
+            const coreRadius = Math.min(width, height) * 0.1 * corePulse;
+            const coreGradient = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, coreRadius);
+            coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            coreGradient.addColorStop(0.8, 'rgba(56, 189, 248, 0.5)');
+            coreGradient.addColorStop(1, 'rgba(14, 165, 233, 0)');
+
+            ctx.fillStyle = coreGradient;
+            ctx.beginPath();
+            ctx.arc(width/2, height/2, coreRadius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
         };
         draw();
     }, []);
@@ -120,14 +134,12 @@ export const LiveAvatarView: React.FC = () => {
 
         if (isSessionActive) {
             setIsSessionActive(false);
-            setAvatarState('idle');
             setTranscript('');
             sessionPromiseRef.current?.then(session => session.close());
             mediaStreamRef.current?.getTracks().forEach(track => track.stop());
             scriptProcessorRef.current?.disconnect();
             audioContextRef.current?.close();
             sessionPromiseRef.current = null;
-            if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
             if (stickerTimeoutRef.current) clearTimeout(stickerTimeoutRef.current);
             stopVisualizer();
             return;
@@ -191,16 +203,9 @@ export const LiveAvatarView: React.FC = () => {
 
                     const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
                     if (base64Audio) {
-                        setAvatarState('speaking');
-                        if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
-                        
                         nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
                         const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
                         
-                        // Set timeout to return to idle slightly after audio finishes
-                        const audioDurationMs = audioBuffer.duration * 1000;
-                        speakingTimeoutRef.current = window.setTimeout(() => setAvatarState('idle'), audioDurationMs);
-
                         const source = outputAudioContext.createBufferSource();
                         source.buffer = audioBuffer;
                         if(analyserRef.current) {
@@ -216,12 +221,10 @@ export const LiveAvatarView: React.FC = () => {
                     console.error('Live session error:', e);
                     setTranscript('Connection error. Please try again.');
                     setIsSessionActive(false);
-                    setAvatarState('idle');
                     stopVisualizer();
                 },
                 onclose: () => {
                     setIsSessionActive(false);
-                    setAvatarState('idle');
                     setTranscript('');
                     stopVisualizer();
                 },
@@ -238,42 +241,21 @@ export const LiveAvatarView: React.FC = () => {
 
     return (
         <div className="h-full w-full flex flex-col items-center justify-center bg-sky-100 p-4">
-            <style>{`
-                @keyframes subtle-breathing {
-                    0%, 100% {
-                        transform: scale(1);
-                    }
-                    50% {
-                        transform: scale(1.02);
-                    }
-                }
-            `}</style>
-            <div className={`relative w-full max-w-sm aspect-square mb-6 transition-transform duration-500 ease-in-out ${avatarState === 'speaking' ? 'scale-105' : 'scale-100'}`}>
+            <div className="relative w-full max-w-sm aspect-square mb-6">
                  <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
-                 <video
-                    key="idle-video"
-                    className={`w-full h-full object-cover rounded-full shadow-2xl absolute top-0 left-0 transition-opacity duration-700 ease-in-out ${avatarState === 'idle' ? 'opacity-100 [animation:subtle-breathing_5s_ease-in-out_infinite]' : 'opacity-0 pointer-events-none'}`}
-                    src={IMAGES.avatarIdle}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                />
-                <video
-                    key="speaking-video"
-                    className={`w-full h-full object-cover rounded-full shadow-2xl absolute top-0 left-0 transition-opacity duration-700 ease-in-out ${avatarState === 'speaking' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                    src={IMAGES.avatarSpeaking}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                />
                 {sticker && STICKERS[sticker] && (
                     <div className="absolute inset-0 flex items-center justify-center transition-all duration-300">
+                        <style>{`
+                            @keyframes fade-in {
+                                0% { opacity: 0; transform: scale(0.8); }
+                                100% { opacity: 1; transform: scale(1); }
+                            }
+                        `}</style>
                         <img 
                             src={STICKERS[sticker]} 
                             alt={sticker} 
                             className="w-48 h-48 object-contain drop-shadow-xl"
+                            style={{animation: 'fade-in 0.5s ease-out'}}
                         />
                     </div>
                 )}

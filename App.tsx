@@ -15,6 +15,10 @@ import { SubscriptionModal } from './components/SubscriptionModal';
 import { MapComponent } from './components/MapComponent';
 import { LiveAvatarView } from './components/LiveAvatarView';
 import { TimeChart } from './components/TimeChart';
+import { MissionPage } from './components/MissionPage';
+import { ContactPage } from './components/ContactPage';
+import { PoliciesPage } from './components/PoliciesPage';
+import { Footer } from './components/Footer';
 
 
 // A simple client-side check for crisis phrases.
@@ -618,6 +622,12 @@ ${JSON.stringify(wellnessPlan)}
                 />;
       case 'liveAvatar':
           return <LiveAvatarView />;
+      case 'mission':
+          return <MissionPage />;
+      case 'contact':
+          return <ContactPage />;
+      case 'policies':
+          return <PoliciesPage />;
       default:
         return <ChatWindow
                   messages={messages}
@@ -649,8 +659,11 @@ ${JSON.stringify(wellnessPlan)}
             isNavOpen={isNavOpen}
             onClose={() => setIsNavOpen(false)}
         />
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-white">
-          {renderView()}
+        <div className="flex-1 flex flex-col bg-white">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            {renderView()}
+          </div>
+          <Footer setView={setView} />
         </div>
       </main>
       {isCheckInVisible && (

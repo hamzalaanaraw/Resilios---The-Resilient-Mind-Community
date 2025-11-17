@@ -2,16 +2,14 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// TODO: Replace with your app's Firebase project configuration
-// Go to your Firebase project console:
-// Project settings > General > Your apps > SDK setup and configuration
+// Configuration from your Firebase project console.
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyBkfHIzTBBJoSUWuIHeAF5frSZsQD1VAfM",
+  authDomain: "resilios-5a5f3.firebaseapp.com",
+  projectId: "resilios-5a5f3",
+  storageBucket: "resilios-5a5f3.appspot.com",
+  messagingSenderId: "984048426314",
+  appId: "1:984048426314:web:3080a5b262031c3eb975b3"
 };
 
 // Initialize Firebase

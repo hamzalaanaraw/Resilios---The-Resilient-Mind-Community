@@ -40,11 +40,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ onClose, o
           onClick={onSubscribe}
           className="w-full p-3 bg-sky-500 text-white rounded-lg font-semibold hover:bg-sky-600 transition"
         >
-          Subscribe Now (Demo)
+          Subscribe Now
         </button>
-         <p className="text-center mt-4 text-xs text-slate-500">
-            This is a simulation. No payment is required.
-        </p>
       </div>
     </div>
   );

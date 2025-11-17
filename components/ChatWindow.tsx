@@ -43,9 +43,10 @@ const ChatMessage: React.FC<{
     });
   };
   
+  // Refined bubble classes for better visual distinction
   const bubbleClasses = isModel 
-    ? 'bg-slate-100 text-slate-800 rounded-tl-none' 
-    : 'bg-sky-500 text-white rounded-br-none';
+    ? 'bg-slate-100 text-slate-800 rounded-tl-none shadow-sm' 
+    : 'bg-sky-500 text-white rounded-br-none shadow-md';
 
   const finalBubbleClasses = message.sticker && !message.text
     ? '' // No bubble for sticker-only messages
@@ -58,68 +59,72 @@ const ChatMessage: React.FC<{
         {isModel && (
           <img src={IMAGES.avatar} alt="Avatar" className="h-8 w-8 rounded-full" />
         )}
-        <div
-          className={`px-4 py-3 rounded-2xl max-w-md md:max-w-lg relative group ${ message.isLiveTranscription ? 'opacity-70' : ''} ${finalBubbleClasses}`}
-        >
-          {message.sticker && STICKERS[message.sticker] && (
-            <img src={STICKERS[message.sticker]} alt={message.sticker} className={`w-32 h-32 object-contain mx-auto ${message.text ? 'mb-2' : ''}`} />
-          )}
-          {message.attachment && message.attachment.mimeType.startsWith('image/') && (
-              <img src={`data:${message.attachment.mimeType};base64,${message.attachment.data}`} alt="attachment" className="rounded-lg mb-2 max-h-48" />
-          )}
-           {message.attachment && message.attachment.mimeType.startsWith('video/') && (
-              <div className="rounded-lg mb-2 p-3 bg-slate-500 flex items-center space-x-2">
-                  <VideoCameraIcon />
-                  <span className="text-sm text-white">Video attachment ready for analysis.</span>
-              </div>
-          )}
-           {message.attachment && message.attachment.mimeType.startsWith('audio/') && (
-              <audio controls src={`data:${message.attachment.mimeType};base64,${message.attachment.data}`} className="w-full my-2" />
-          )}
-          
-          {message.text && <p className="text-sm whitespace-pre-wrap">{message.text}</p>}
+        <div className={`flex flex-col max-w-md md:max-w-lg ${isModel ? 'items-start' : 'items-end'}`}>
+            <div
+                className={`px-4 py-3 rounded-xl relative group ${ message.isLiveTranscription ? 'opacity-70' : ''} ${finalBubbleClasses}`}
+            >
+                {message.sticker && STICKERS[message.sticker] && (
+                    <img src={STICKERS[message.sticker]} alt={message.sticker} className={`w-32 h-32 object-contain mx-auto ${message.text ? 'mb-2' : ''}`} />
+                )}
+                {message.attachment && message.attachment.mimeType.startsWith('image/') && (
+                    <img src={`data:${message.attachment.mimeType};base64,${message.attachment.data}`} alt="attachment" className="rounded-lg mb-2 max-h-48" />
+                )}
+                {message.attachment && message.attachment.mimeType.startsWith('video/') && (
+                    <div className="rounded-lg mb-2 p-3 bg-slate-500 flex items-center space-x-2">
+                        <VideoCameraIcon />
+                        <span className="text-sm text-white">Video attachment ready for analysis.</span>
+                    </div>
+                )}
+                {message.attachment && message.attachment.mimeType.startsWith('audio/') && (
+                    <audio controls src={`data:${message.attachment.mimeType};base64,${message.attachment.data}`} className="w-full my-2" />
+                )}
+                
+                {message.text && <p className="text-sm whitespace-pre-wrap">{message.text}</p>}
 
-          {message.groundingChunks && message.groundingChunks.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-slate-200">
-                  <h4 className="text-xs font-semibold mb-1">Sources:</h4>
-                  <div className="flex flex-col space-y-1">
-                  {message.groundingChunks.map((chunk, index) => {
-                      const source = chunk.web || chunk.maps;
-                      return source ? <a key={index} href={source.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-600 hover:underline truncate">{source.title}</a> : null
-                  })}
-                  </div>
-              </div>
-          )}
-          <div className="flex justify-end items-center mt-2">
-              {!isModel && message.wasDeepThinking && (
-                  <div className="mr-2 text-sky-200" title="Sent with Deeper Thinking">
-                      <BrainIcon />
-                  </div>
-              )}
-              {isModel && !message.isLiveTranscription && message.text && (
-                  <div className="flex items-center space-x-2 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                          onClick={handleCopyText}
-                          disabled={copied}
-                          className="p-1 rounded-full text-slate-400 hover:text-sky-500 hover:bg-sky-100 disabled:cursor-not-allowed"
-                          aria-label="Copy message"
-                      >
-                          {copied ? <CheckIcon /> : <CopyIcon />}
-                      </button>
-                      <button
-                          onClick={handlePlayAudio}
-                          disabled={isSpeaking}
-                          className="p-1 rounded-full text-slate-400 hover:text-sky-500 hover:bg-sky-100 disabled:text-slate-300 disabled:cursor-not-allowed transition-colors"
-                          aria-label="Read message aloud"
-                      >
-                          {isSpeaking ? <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin"></div> : <SpeakerphoneIcon />}
-                      </button>
-                  </div>
-              )}
-              <p className="text-xs opacity-60">
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
-          </div>
+                {message.groundingChunks && message.groundingChunks.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-200">
+                        <h4 className="text-xs font-semibold mb-1">Sources:</h4>
+                        <div className="flex flex-col space-y-1">
+                        {message.groundingChunks.map((chunk, index) => {
+                            const source = chunk.web || chunk.maps;
+                            return source ? <a key={index} href={source.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-600 hover:underline truncate">{source.title}</a> : null
+                        })}
+                        </div>
+                    </div>
+                )}
+                
+                {isModel && !message.isLiveTranscription && message.text && (
+                    <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white p-1 rounded-full shadow-lg">
+                        <button
+                            onClick={handleCopyText}
+                            disabled={copied}
+                            className="p-1 rounded-full text-slate-500 hover:text-sky-600 hover:bg-sky-50 disabled:cursor-not-allowed"
+                            aria-label="Copy message"
+                        >
+                            {copied ? <CheckIcon /> : <CopyIcon />}
+                        </button>
+                        <button
+                            onClick={handlePlayAudio}
+                            disabled={isSpeaking}
+                            className="p-1 rounded-full text-slate-500 hover:text-sky-600 hover:bg-sky-50 disabled:text-slate-300 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Read message aloud"
+                        >
+                            {isSpeaking ? <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin"></div> : <SpeakerphoneIcon />}
+                        </button>
+                    </div>
+                )}
+            </div>
+            {/* Timestamp is now outside and below the bubble */}
+            <div className="flex items-center mt-1.5">
+                {!isModel && message.wasDeepThinking && (
+                    <div className="mr-2 text-slate-400" title="Sent with Deeper Thinking">
+                        <BrainIcon />
+                    </div>
+                )}
+                <p className="text-xs text-slate-400">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+            </div>
         </div>
       </div>
       {isModel && message.suggestedStickers && message.suggestedStickers.length > 0 && (
@@ -309,7 +314,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
                 className="p-3 bg-sky-500 text-white rounded-full disabled:bg-slate-300 hover:bg-sky-600 transition"
                 aria-label="Send message"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg xmlns="http://www.w.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
                 </svg>
             </button>

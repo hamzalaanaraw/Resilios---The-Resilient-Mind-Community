@@ -50,7 +50,7 @@ export interface CheckInData {
   notes: string;
 }
 
-export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'timeChart';
+export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'timeChart' | 'mission' | 'contact' | 'policies';
 
 export interface User {
   uid: string;
