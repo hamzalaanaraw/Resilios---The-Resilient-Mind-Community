@@ -61,6 +61,12 @@ export interface LiveConversation {
   transcript: LiveTranscriptPart[];
 }
 
+export interface SavedMeditation {
+  id: string;
+  name: string;
+  script: string;
+}
+
 export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'timeChart' | 'mission' | 'contact' | 'policies' | 'liveHistory';
 
 export interface User {

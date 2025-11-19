@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export const SpeakerphoneIcon = () => (
@@ -15,7 +14,7 @@ export const PaperclipIcon = () => (
 
 export const GoogleIcon = () => (
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M21.35 11.1H12.18V13.83H18.68C18.43 15.63 17.18 17.15 15.35 18.23V20.28H18.38C20.38 18.48 21.5 15.83 21.5 12.83C21.5 12.23 21.45 11.66 21.35 11.1Z" fill="#4285F4" />
+        <path d="M21.35 11.1H12.18V13.83H18.68C18.43 15.63 17.18 17.15 15.35 18.23V20.28H18.38C2.38 18.48 21.5 15.83 21.5 12.83C21.5 12.23 21.45 11.66 21.35 11.1Z" fill="#4285F4" />
         <path d="M12.18 21.5C14.88 21.5 17.18 20.6 18.38 19.28L15.35 17.23C14.55 17.78 13.45 18.13 12.18 18.13C9.98 18.13 8.08 16.73 7.35 14.83L4.18 14.83V16.93C5.58 19.63 8.68 21.5 12.18 21.5Z" fill="#34A853" />
         <path d="M7.35 14.83C7.15 14.23 7.05 13.56 7.05 12.83C7.05 12.1 7.15 11.43 7.35 10.83V8.73L4.18 8.73C3.58 10.03 3.18 11.38 3.18 12.83C3.18 14.28 3.58 15.63 4.18 16.93L7.35 14.83Z" fill="#FBBC05" />
         <path d="M12.18 7.53C13.58 7.53 14.68 7.98 15.58 8.83L18.48 5.93C17.18 4.63 14.88 3.18 12.18 3.18C8.68 3.18 5.58 5.03 4.18 7.73L7.35 9.83C8.08 7.93 9.98 6.53 12.18 6.53V7.53Z" fill="#EA4335" />
@@ -140,5 +139,23 @@ export const WaveformHistoryIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l2-3 2 4 2-5 2 4" />
+    </svg>
+);
+
+export const WandSparklesIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+    </svg>
+);
+
+export const BookmarkIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+    </svg>
+);
+
+export const TrashIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
 );

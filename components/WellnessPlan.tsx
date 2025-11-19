@@ -1,8 +1,6 @@
-
-
-import React, { useState, useRef, useEffect } from 'react';
-import { WellnessPlanData, WellnessPlanSection } from '../types';
-import { PlayerPauseIcon, PlayerPlayIcon, PlayerStopIcon } from './Icons';
+import React, { useState } from 'react';
+import { WellnessPlanData, WellnessPlanSection, SavedMeditation } from '../types';
+import { AIGuidedMeditation } from './AIGuidedMeditation';
 
 type PlanKey = keyof WellnessPlanData;
 
@@ -12,144 +10,15 @@ interface WellnessPlanProps {
   onGeneratePrompts: () => Promise<void>;
   isGeneratingPrompts: boolean;
   initError: string | null;
+  // AI Meditation Props
+  isGeneratingMeditation: boolean;
+  generatedMeditationScript: string;
+  savedMeditations: SavedMeditation[];
+  onGenerateMeditation: () => void;
+  onPlayMeditation: (script: string) => void;
+  onSaveMeditation: (script: string) => void;
+  onDeleteMeditation: (id: string) => void;
 }
-
-const MEDITATION_TRACKS = [
-  { title: 'Peaceful Music', url: 'https://archive.org/download/PeacefulMeditationMusic/Peaceful%20Meditation%20Music.mp3' },
-  { title: 'Relaxing River', url: 'https://archive.org/download/river-meditation/River%20Meditation.mp3' },
-  { title: 'Forest Ambience', url: 'https://archive.org/download/ForestAmbience/Forest%20Ambience.mp3' },
-];
-
-
-const MeditationPlayer: React.FC = () => {
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-    const [selectedTrackIndex, setSelectedTrackIndex] = useState(0);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [duration, setDuration] = useState(0);
-    const [currentTime, setCurrentTime] = useState(0);
-
-    useEffect(() => {
-        const audio = audioRef.current;
-        if (audio) {
-            audio.pause();
-            setIsPlaying(false);
-            audio.currentTime = 0;
-            audio.load(); 
-        }
-    }, [selectedTrackIndex]);
-
-    useEffect(() => {
-        const audio = audioRef.current;
-        if (!audio) return;
-
-        const setAudioData = () => {
-            setDuration(audio.duration);
-            setCurrentTime(audio.currentTime);
-        }
-        const setAudioTime = () => setCurrentTime(audio.currentTime);
-        const handleEnded = () => setIsPlaying(false);
-        const handleError = (e: Event) => {
-            const audioEl = e.target as HTMLAudioElement;
-            const error = audioEl.error;
-            console.error("Audio player error:", error ? `${error.message} (Code: ${error.code})` : 'Unknown error');
-            setIsPlaying(false);
-        };
-
-        audio.addEventListener('loadeddata', setAudioData);
-        audio.addEventListener('timeupdate', setAudioTime);
-        audio.addEventListener('ended', handleEnded);
-        audio.addEventListener('error', handleError);
-
-        if (audio.readyState > 0) {
-            setAudioData();
-        }
-
-        return () => {
-            if (audio) {
-                audio.removeEventListener('loadeddata', setAudioData);
-                audio.removeEventListener('timeupdate', setAudioTime);
-                audio.removeEventListener('ended', handleEnded);
-                audio.removeEventListener('error', handleError);
-            }
-        };
-    }, []);
-
-    const togglePlayPause = () => {
-        if (audioRef.current) {
-            if (isPlaying) {
-                audioRef.current.pause();
-            } else {
-                audioRef.current.play().catch(e => console.error("Error playing audio:", e ? (e as Error).message : 'Unknown playback error.'));
-            }
-            setIsPlaying(!isPlaying);
-        }
-    };
-
-    const stopPlayer = () => {
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-            setIsPlaying(false);
-        }
-    };
-
-    const formatTime = (time: number) => {
-        if (isNaN(time) || time === 0) return '0:00';
-        const minutes = Math.floor(time / 60);
-        const seconds = Math.floor(time % 60);
-        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-    };
-    
-    return (
-        <div className="mt-6 p-4 border border-slate-200 rounded-lg bg-slate-50">
-            <audio ref={audioRef} src={MEDITATION_TRACKS[selectedTrackIndex].url} preload="metadata" />
-
-            <h4 className="text-md font-semibold text-slate-700 mb-4">Quick Guided Meditation</h4>
-            
-            <div className="mb-4">
-                <div className="flex flex-wrap gap-2">
-                    {MEDITATION_TRACKS.map((track, index) => (
-                        <button 
-                            key={index} 
-                            onClick={() => setSelectedTrackIndex(index)}
-                            className={`px-3 py-1 text-sm rounded-full transition-colors ${selectedTrackIndex === index ? 'bg-sky-500 text-white font-medium' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
-                        >
-                            {track.title}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-                <button
-                    onClick={togglePlayPause}
-                    className="p-2 rounded-full text-sky-600 hover:bg-sky-100 transition-colors"
-                    aria-label={isPlaying ? 'Pause meditation' : 'Play meditation'}
-                >
-                    {isPlaying ? <PlayerPauseIcon /> : <PlayerPlayIcon />}
-                </button>
-                <button
-                    onClick={stopPlayer}
-                    className="p-2 rounded-full text-slate-500 hover:bg-slate-100 transition-colors"
-                    aria-label="Stop meditation"
-                >
-                    <PlayerStopIcon />
-                </button>
-                <div className="flex-1 flex items-center space-x-2">
-                    <span className="text-sm text-slate-600 font-mono w-10 text-center">{formatTime(currentTime)}</span>
-                    <div className="w-full bg-slate-200 rounded-full h-1.5">
-                        <div
-                            className="bg-sky-500 h-1.5 rounded-full"
-                            style={{ width: `${(currentTime / duration) * 100 || 0}%` }}
-                        ></div>
-                    </div>
-                    <span className="text-sm text-slate-600 font-mono w-10 text-center">{formatTime(duration)}</span>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 
 interface AccordionSectionProps {
   section: WellnessPlanSection;
@@ -161,9 +30,10 @@ interface AccordionSectionProps {
   onGenerateClick?: () => void;
   isGenerating?: boolean;
   initError: string | null;
+  children?: React.ReactNode;
 }
 
-const AccordionSection: React.FC<AccordionSectionProps> = ({ section, isOpen, onToggle, onContentChange, sectionKey, showGenerateButton, onGenerateClick, isGenerating, initError }) => {
+const AccordionSection: React.FC<AccordionSectionProps> = ({ section, isOpen, onToggle, onContentChange, sectionKey, showGenerateButton, onGenerateClick, isGenerating, initError, children }) => {
   return (
     <div className="border border-slate-200 rounded-lg mb-4 overflow-hidden">
       <button
@@ -214,14 +84,15 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ section, isOpen, on
             className="w-full p-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-sky-400 transition"
             placeholder={`Your thoughts on ${section.title.toLowerCase()}...`}
           />
-          {sectionKey === 'toolbox' && <MeditationPlayer />}
+          {children}
         </div>
       )}
     </div>
   );
 };
 
-export const WellnessPlan: React.FC<WellnessPlanProps> = ({ plan, onPlanChange, onGeneratePrompts, isGeneratingPrompts, initError }) => {
+export const WellnessPlan: React.FC<WellnessPlanProps> = (props) => {
+  const { plan, onPlanChange, onGeneratePrompts, isGeneratingPrompts, initError, ...meditationProps } = props;
   const [openSection, setOpenSection] = useState<PlanKey | null>('toolbox');
 
   const handleToggle = (key: PlanKey) => {
@@ -257,7 +128,9 @@ export const WellnessPlan: React.FC<WellnessPlanProps> = ({ plan, onPlanChange, 
             onGenerateClick={onGeneratePrompts}
             isGenerating={isGeneratingPrompts}
             initError={initError}
-          />
+          >
+            {key === 'toolbox' && <AIGuidedMeditation {...meditationProps} initError={initError} />}
+          </AccordionSection>
         ))}
       </div>
     </div>

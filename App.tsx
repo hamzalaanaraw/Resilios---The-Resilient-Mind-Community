@@ -5,7 +5,7 @@ import { ChatWindow } from './components/ChatWindow';
 import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
-import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation } from './types';
+import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation, SavedMeditation } from './types';
 import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, STICKERS, displaySticker } from './constants';
 import { Nav } from './components/Nav';
 import { decode, decodeAudioData } from './utils/audio';
@@ -63,6 +63,11 @@ const App: React.FC = () => {
   const [checkInHistory, setCheckInHistory] = useState<CheckInData[]>(() => loadFromLocalStorage('checkInHistory', [], true));
   const [aiInsights, setAiInsights] = useState('');
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+
+  // AI Guided Meditation state
+  const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
+  const [generatedMeditationScript, setGeneratedMeditationScript] = useState('');
+  const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>(() => loadFromLocalStorage('savedMeditations', []));
   
   // Voice History state
   const [liveHistory, setLiveHistory] = useState<LiveConversation[]>(() => loadFromLocalStorage('liveHistory', [], true));
@@ -110,6 +115,10 @@ const App: React.FC = () => {
   }, [liveHistory]);
 
   useEffect(() => {
+    localStorage.setItem('savedMeditations', JSON.stringify(savedMeditations));
+  }, [savedMeditations]);
+
+  useEffect(() => {
     localStorage.setItem('latestMood', JSON.stringify(latestMood));
   }, [latestMood]);
 
@@ -128,6 +137,7 @@ const App: React.FC = () => {
         },
       ]);
       setAiInsights('');
+      setGeneratedMeditationScript('');
     }
   }, [user]);
   
@@ -470,33 +480,74 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
     setLiveHistory(prev => [...prev, newConversation]);
 }, []);
 
+const handleTextToSpeech = async (text: string) => {
+    if (!ai.current) return null;
+    try {
+       const response = await ai.current.models.generateContent({
+           model: "gemini-2.5-flash-preview-tts",
+           contents: [{ parts: [{ text }] }],
+           config: {
+               responseModalities: [Modality.AUDIO],
+               speechConfig: {
+                   voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+               },
+           },
+       });
+       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+       if (base64Audio) {
+           const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+           const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
+           const source = outputAudioContext.createBufferSource();
+           source.buffer = audioBuffer;
+           source.connect(outputAudioContext.destination);
+           source.start();
+       }
+    } catch(error) {
+       console.error("TTS Error:", error);
+    }
+ };
 
-  const handleTextToSpeech = async (text: string) => {
-     if (!ai.current) return null;
-     try {
-        const response = await ai.current.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-                },
-            },
+ const handleGenerateMeditation = async () => {
+    if (!ai.current) {
+        setGeneratedMeditationScript(initError || "Sorry, I couldn't create a meditation script right now.");
+        return;
+    }
+    setIsGeneratingMeditation(true);
+    setGeneratedMeditationScript('');
+    try {
+        const prompt = "Generate a short, unique 1-2 minute guided meditation script focused on mindfulness, grounding, or self-compassion. The tone should be calm, gentle, and soothing. Structure it with clear pauses indicated by paragraph breaks.";
+        const result = await ai.current.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
         });
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64Audio) {
-            const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
-            const source = outputAudioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(outputAudioContext.destination);
-            source.start();
-        }
-     } catch(error) {
-        console.error("TTS Error:", error);
-     }
-  };
+        setGeneratedMeditationScript(result.text);
+    } catch (error) {
+        console.error("Error generating meditation script:", error);
+        setGeneratedMeditationScript("Sorry, I had trouble creating a meditation script. Please try again.");
+    } finally {
+        setIsGeneratingMeditation(false);
+    }
+};
+
+const handleSaveMeditation = (script: string) => {
+    const name = prompt("Save this meditation as:", `Mindful Moment #${savedMeditations.length + 1}`);
+    if (name && name.trim() && script) {
+        const newMeditation: SavedMeditation = {
+            id: crypto.randomUUID(),
+            name: name.trim(),
+            script: script,
+        };
+        setSavedMeditations(prev => [...prev, newMeditation]);
+        setGeneratedMeditationScript(''); // Clear the generated script after saving
+    }
+};
+
+const handleDeleteMeditation = (id: string) => {
+    if (confirm("Are you sure you want to delete this saved meditation?")) {
+        setSavedMeditations(prev => prev.filter(m => m.id !== id));
+    }
+};
+
 
   const renderView = () => {
     switch (view) {
@@ -515,6 +566,14 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
                   onGeneratePrompts={handleGenerateJournalPrompts}
                   isGeneratingPrompts={isGeneratingPrompts}
                   initError={initError}
+                  // AI Meditation Props
+                  isGeneratingMeditation={isGeneratingMeditation}
+                  generatedMeditationScript={generatedMeditationScript}
+                  savedMeditations={savedMeditations}
+                  onGenerateMeditation={handleGenerateMeditation}
+                  onPlayMeditation={handleTextToSpeech}
+                  onSaveMeditation={handleSaveMeditation}
+                  onDeleteMeditation={handleDeleteMeditation}
                 />;
       case 'map':
         return <MapComponent
