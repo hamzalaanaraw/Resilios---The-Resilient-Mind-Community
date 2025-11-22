@@ -1,18 +1,8 @@
 
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import { 
-  User as FirebaseUser, 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  signOut, 
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  updateProfile,
-} from 'firebase/auth';
-import { auth } from '../firebase/config';
 import { User } from '../types';
 
+// Mock Auth Context Interface
 interface AuthContextType {
   user: User | null;
   isPremium: boolean;
@@ -28,6 +18,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const STORAGE_KEY_USER = 'resilios_mock_user';
+const STORAGE_KEY_PREMIUM = 'resilios_mock_premium';
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isPremium, setIsPremium] = useState(false);
@@ -35,179 +28,118 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        const mappedUser: User = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-        };
-        setUser(mappedUser);
-        const premiumStatus = localStorage.getItem(`premium_${firebaseUser.uid}`);
-        setIsPremium(premiumStatus === 'true');
-      } else {
-        setUser(null);
-        setIsPremium(false);
+    // Check local storage on load
+    const storedUser = localStorage.getItem(STORAGE_KEY_USER);
+    const storedPremium = localStorage.getItem(STORAGE_KEY_PREMIUM);
+    
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error("Failed to parse user from storage", e);
       }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    }
+    if (storedPremium === 'true') {
+      setIsPremium(true);
+    }
+    setLoading(false);
   }, []);
 
-  const handleAuthError = (err: any) => {
-      console.error("Firebase Auth Error:", err);
-      let message = 'An unexpected error occurred. Please try again later.';
-      switch (err.code) {
-        // Google Sign-In specific
-        case 'auth/unauthorized-domain':
-          const hostname = window.location.hostname;
-          message = `This domain (${hostname}) is not authorized for sign-in. Please add it to your Firebase project's "Authorized domains" list.`;
-          break;
-        case 'auth/popup-closed-by-user':
-        case 'auth/cancelled-popup-request':
-          message = 'Sign-in cancelled. Please try again.';
-          break;
-        case 'auth/popup-blocked':
-          message = 'Pop-up blocked. Please allow pop-ups for this site to sign in.';
-          break;
-        
-        // Email/Password specific
-        case 'auth/email-already-in-use':
-          message = 'An account already exists with this email address.';
-          break;
-        case 'auth/invalid-email':
-          message = 'The email address is not valid.';
-          break;
-        case 'auth/weak-password':
-          message = 'The password is too weak. It must be at least 6 characters.';
-          break;
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          message = 'Invalid email or password. Please try again.';
-          break;
-
-        // General errors
-        case 'auth/configuration-not-found':
-          message = 'Sign-in provider is not configured. Please check your Firebase project settings.';
-          break;
-        case 'auth/api-key-not-valid':
-             message = 'The API Key is invalid. Please check your firebase/config.ts file.';
-             break;
-      }
-      setError(message);
-      setLoading(false);
-  };
+  // Simulate network delay for realism
+  const simulateNetwork = () => new Promise(resolve => setTimeout(resolve, 800));
 
   const loginWithGoogle = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (err: any) {
-      handleAuthError(err);
-    }
+    await simulateNetwork();
+    
+    // Simulate a successful Google login
+    const mockUser: User = {
+      uid: 'google-user-123',
+      email: 'user@gmail.com',
+      displayName: 'Google User',
+      photoURL: null, 
+    };
+    
+    setUser(mockUser);
+    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(mockUser));
+    setLoading(false);
   };
 
   const loginWithEmail = async (email: string, password: string) => {
     setLoading(true);
     setError(null);
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err: any) {
-      handleAuthError(err);
+    await simulateNetwork();
+
+    if (!email.includes('@')) {
+       setError("Please enter a valid email address.");
+       setLoading(false);
+       return;
     }
+
+    // Accept any password for mock purposes
+    const name = email.split('@')[0];
+    const mockUser: User = {
+      uid: `email-user-${Date.now()}`,
+      email: email,
+      displayName: name.charAt(0).toUpperCase() + name.slice(1),
+      photoURL: null
+    };
+
+    setUser(mockUser);
+    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(mockUser));
+    setLoading(false);
   };
 
   const signUp = async (email: string, password: string, displayName: string) => {
-      setLoading(true);
-      setError(null);
-      if (!displayName.trim()) {
-        setError("Display name cannot be empty.");
-        setLoading(false);
-        return;
-      }
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        if (userCredential.user) {
-            await updateProfile(userCredential.user, { displayName });
-            // This is needed to make the displayName available immediately after sign up
-            // as onAuthStateChanged can be slightly delayed.
-            const firebaseUser = userCredential.user;
-            setUser({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              displayName: firebaseUser.displayName,
-              photoURL: firebaseUser.photoURL,
-            });
-        }
-      } catch (err: any) {
-          handleAuthError(err);
-      }
-  };
-  
-  const signUpForTrial = async (email: string, password: string, displayName: string) => {
     setLoading(true);
     setError(null);
-    if (!displayName.trim()) {
-      setError("Display name cannot be empty.");
-      setLoading(false);
-      return;
-    }
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      if (userCredential.user) {
-          const firebaseUser = userCredential.user;
-          await updateProfile(firebaseUser, { displayName });
-          
-          // Grant premium status for the trial
-          localStorage.setItem(`premium_${firebaseUser.uid}`, 'true');
-          setIsPremium(true);
+    await simulateNetwork();
 
-          // This is needed to make the displayName available immediately after sign up
-          // as onAuthStateChanged can be slightly delayed.
-          setUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
-          });
-      }
-    } catch (err: any) {
-        handleAuthError(err);
-    } finally {
-        // We manually set the user, so we can also manually stop loading
-        // to provide a faster UI transition.
+    if (!displayName) {
+        setError("Display name is required.");
         setLoading(false);
+        return;
     }
+
+    const mockUser: User = {
+      uid: `user-${Date.now()}`,
+      email: email,
+      displayName: displayName,
+      photoURL: null
+    };
+
+    setUser(mockUser);
+    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(mockUser));
+    setLoading(false);
+  };
+
+  const signUpForTrial = async (email: string, password: string, displayName: string) => {
+    await signUp(email, password, displayName);
+    subscribe();
   };
 
   const logout = async () => {
     setLoading(true);
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Error during sign-out:", error);
-    } finally {
-        setLoading(false);
-    }
+    await simulateNetwork();
+    setUser(null);
+    setIsPremium(false);
+    localStorage.removeItem(STORAGE_KEY_USER);
+    localStorage.removeItem(STORAGE_KEY_PREMIUM);
+    setLoading(false);
   };
 
   const subscribe = () => {
-    if (user) {
-      localStorage.setItem(`premium_${user.uid}`, 'true');
-      setIsPremium(true);
-    }
+    setIsPremium(true);
+    localStorage.setItem(STORAGE_KEY_PREMIUM, 'true');
   };
-  
+
   if (loading && !user) {
     return (
         <div className="flex items-center justify-center h-screen bg-sky-50">
             <div className="text-center">
-                <p className="text-slate-600">Initializing...</p>
+                <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-slate-600">Initializing Resilios...</p>
             </div>
         </div>
     );

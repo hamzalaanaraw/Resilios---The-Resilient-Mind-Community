@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Header } from './components/Header';
@@ -5,7 +6,7 @@ import { ChatWindow } from './components/ChatWindow';
 import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
-import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation, SavedMeditation } from './types';
+import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation, SavedMeditation, WellnessPlanEntry } from './types';
 import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, STICKERS, displaySticker } from './constants';
 import { Nav } from './components/Nav';
 import { decode, decodeAudioData } from './utils/audio';
@@ -87,9 +88,11 @@ const App: React.FC = () => {
   
   // Initialize AI client
   useEffect(() => {
-    if (process.env.API_KEY) {
+    // API Key updated as per user request
+    const API_KEY = "AIzaSyBjzZaDPlHrzXh--9tE9JW32kxwXGzTReQ";
+    if (API_KEY) {
       try {
-        ai.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        ai.current = new GoogleGenAI({ apiKey: API_KEY });
         setInitError(null);
       } catch (e) {
         console.error("Failed to initialize GoogleGenAI:", e);
@@ -321,6 +324,29 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
   }, [wellnessPlan, getStickerSuggestions, initError]);
 
   const handleWellnessPlanChange = (newPlan: WellnessPlanData) => {
+    setWellnessPlan(newPlan);
+  };
+  
+  const handleSaveWellnessEntry = (key: keyof WellnessPlanData) => {
+    const section = wellnessPlan[key];
+    if (!section.content.trim()) return;
+
+    const newEntry: WellnessPlanEntry = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        content: section.content
+    };
+
+    // Prepend new entry to history
+    const newHistory = [newEntry, ...(section.history || [])];
+
+    const newPlan = {
+        ...wellnessPlan,
+        [key]: {
+            ...section,
+            history: newHistory
+        }
+    };
     setWellnessPlan(newPlan);
   };
 
@@ -564,6 +590,7 @@ const handleDeleteMeditation = (id: string) => {
                   plan={wellnessPlan} 
                   onPlanChange={handleWellnessPlanChange}
                   onGeneratePrompts={handleGenerateJournalPrompts}
+                  onSaveEntry={handleSaveWellnessEntry}
                   isGeneratingPrompts={isGeneratingPrompts}
                   initError={initError}
                   // AI Meditation Props

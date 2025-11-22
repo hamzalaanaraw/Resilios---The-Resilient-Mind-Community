@@ -1,3 +1,4 @@
+
 export type MessageRole = 'user' | 'model';
 
 export interface GroundingChunk {
@@ -29,10 +30,17 @@ export interface Message {
   suggestedStickers?: string[];
 }
 
+export interface WellnessPlanEntry {
+  id: string;
+  timestamp: string; // ISO string
+  content: string;
+}
+
 export interface WellnessPlanSection {
   title: string;
   prompt: string;
   content: string;
+  history?: WellnessPlanEntry[];
 }
 
 export interface WellnessPlanData {
