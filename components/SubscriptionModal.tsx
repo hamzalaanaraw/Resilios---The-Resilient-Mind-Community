@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { loadPayPalScript } from '../utils/paypal';
 import { LockIcon, CheckIcon } from './Icons';
@@ -79,7 +80,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ onClose, o
                     if(mounted) setUseFallback(true);
                 }
             } else {
-                 console.warn("PayPal container missing during render.");
+                 // Container might not be ready in some render cycles
+                 if(mounted) setUseFallback(true);
             }
         } else {
             if(mounted) setUseFallback(true);

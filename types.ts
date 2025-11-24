@@ -1,6 +1,5 @@
 
 
-
 export type MessageRole = 'user' | 'model';
 
 export interface GroundingChunk {
@@ -84,6 +83,7 @@ export interface User {
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  emailVerified: boolean;
 }
 
 export type NotificationType = 'success' | 'error' | 'info';

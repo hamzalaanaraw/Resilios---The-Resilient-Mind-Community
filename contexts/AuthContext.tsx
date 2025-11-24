@@ -14,6 +14,8 @@ interface AuthContextType {
   signUpForTrial: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
   subscribe: () => void;
+  sendVerificationEmail: () => Promise<void>;
+  mockVerifyEmail: () => Promise<void>; // Helper for the mock environment
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,7 +36,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        // Backward compatibility: if emailVerified is missing, assume true for old mock users
+        if (parsedUser.emailVerified === undefined) {
+            parsedUser.emailVerified = true;
+        }
+        setUser(parsedUser);
       } catch (e) {
         console.error("Failed to parse user from storage", e);
       }
@@ -45,7 +52,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(false);
   }, []);
 
-  // Simulate network delay for realism
   const simulateNetwork = () => new Promise(resolve => setTimeout(resolve, 800));
 
   const loginWithGoogle = async () => {
@@ -53,12 +59,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     await simulateNetwork();
     
-    // Simulate a successful Google login
     const mockUser: User = {
       uid: 'google-user-123',
       email: 'user@gmail.com',
       displayName: 'Google User',
-      photoURL: null, 
+      photoURL: null,
+      emailVerified: true, // Google auth usually implies verified email
     };
     
     setUser(mockUser);
@@ -83,13 +89,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
     }
 
-    // Accept any password for mock purposes
     const name = email.split('@')[0];
     const mockUser: User = {
       uid: `email-user-${Date.now()}`,
       email: email,
       displayName: name.charAt(0).toUpperCase() + name.slice(1),
-      photoURL: null
+      photoURL: null,
+      emailVerified: true // For login in mock, assume verified if account exists (simplification)
     };
 
     setUser(mockUser);
@@ -124,7 +130,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       uid: `user-${Date.now()}`,
       email: email,
       displayName: displayName,
-      photoURL: null
+      photoURL: null,
+      emailVerified: false // New signups need verification
     };
 
     setUser(mockUser);
@@ -152,6 +159,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem(STORAGE_KEY_PREMIUM, 'true');
   };
 
+  const sendVerificationEmail = async () => {
+      setLoading(true);
+      await simulateNetwork();
+      // In a real app, this triggers firebase.auth().currentUser.sendEmailVerification()
+      setLoading(false);
+  };
+
+  // Only for mock environment to simulate clicking the link
+  const mockVerifyEmail = async () => {
+      if (!user) return;
+      setLoading(true);
+      await simulateNetwork();
+      
+      const updatedUser = { ...user, emailVerified: true };
+      setUser(updatedUser);
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
+      setLoading(false);
+  };
+
   if (loading && !user) {
     return (
         <div className="flex items-center justify-center h-screen bg-sky-50">
@@ -164,7 +190,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   return (
-    <AuthContext.Provider value={{ user, isPremium, loading, loginWithGoogle, loginWithEmail, signUp, signUpForTrial, logout, subscribe, error }}>
+    <AuthContext.Provider value={{ 
+        user, 
+        isPremium, 
+        loading, 
+        loginWithGoogle, 
+        loginWithEmail, 
+        signUp, 
+        signUpForTrial, 
+        logout, 
+        subscribe, 
+        error,
+        sendVerificationEmail,
+        mockVerifyEmail
+    }}>
       {children}
     </AuthContext.Provider>
   );

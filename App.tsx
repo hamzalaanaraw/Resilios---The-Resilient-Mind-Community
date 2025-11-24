@@ -25,6 +25,7 @@ import { LandingPage } from './components/LandingPage';
 import { FunctionDeclaration, Modality, Type } from '@google/genai';
 import { getFriendlyErrorMessage } from './utils/errors';
 import { NotificationToast } from './components/NotificationToast';
+import { VerifyEmailScreen } from './components/VerifyEmailScreen';
 
 
 // A simple client-side check for crisis phrases.
@@ -102,21 +103,27 @@ const App: React.FC = () => {
   const ai = useRef<GoogleGenAI | null>(null);
   
   // Initialize AI client
-  useEffect(() => {
-    // API Key updated as per user request
+  const initializeAI = useCallback(() => {
+    setInitError(null); // Clear previous errors on retry
     const API_KEY = "AIzaSyBjzZaDPlHrzXh--9tE9JW32kxwXGzTReQ";
     if (API_KEY) {
       try {
         ai.current = new GoogleGenAI({ apiKey: API_KEY });
-        setInitError(null);
+        // Optional: Show success toast if it's a retry (implicitly checked by clearing error)
+        // We can't easily check 'previous error' here due to closure, but the user seeing the error clear is good enough.
       } catch (e) {
         console.error("Failed to initialize GoogleGenAI:", e);
-        setInitError("Could not initialize the AI service. The application may not function correctly.");
+        setInitError("Could not connect to AI service. Please check your internet connection or try again later.");
       }
     } else {
       console.error("API_KEY environment variable not set.");
-      setInitError("The AI service has not been configured for this application. Please contact the administrator.");
+      setInitError("System configuration error: API Key is missing. Please contact support.");
     }
+  }, []);
+
+  useEffect(() => {
+    initializeAI();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Effect to save data to localStorage whenever it changes
@@ -626,6 +633,7 @@ const handleDeleteMeditation = (id: string) => {
                   initError={initError}
                   onLoadMore={handleLoadMoreMessages}
                   hasMore={hasMoreMessages}
+                  onRetryConnection={initializeAI}
                   />;
       case 'plan':
         return <WellnessPlan 
@@ -650,6 +658,7 @@ const handleDeleteMeditation = (id: string) => {
                   results={mapResults}
                   userLocation={mapUserLocation}
                   initError={initError}
+                  onRetryConnection={initializeAI}
                 />;
        case 'calendar':
         return <WellnessCalendar
@@ -679,6 +688,7 @@ const handleDeleteMeditation = (id: string) => {
                   initError={initError}
                   onLoadMore={handleLoadMoreMessages}
                   hasMore={hasMoreMessages}
+                  onRetryConnection={initializeAI}
                   />;
     }
   };
@@ -693,8 +703,12 @@ const handleDeleteMeditation = (id: string) => {
     return <AuthScreen onBack={() => setShowLandingPage(true)} />;
   }
 
+  if (user && !user.emailVerified) {
+      return <VerifyEmailScreen />;
+  }
+
   return (
-    <div className="flex flex-col h-screen font-sans antialiased text-slate-800">
+    <div className="flex flex-col h-[100dvh] font-sans antialiased text-slate-800 overflow-hidden">
       <Header onMenuClick={() => setIsNavOpen(true)} />
       
       <NotificationToast notification={notification} onClose={() => setNotification(null)} />
@@ -714,11 +728,11 @@ const handleDeleteMeditation = (id: string) => {
             isNavOpen={isNavOpen}
             onClose={() => setIsNavOpen(false)}
         />
-        <div className="flex-1 flex flex-col bg-white">
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="flex-1 flex flex-col bg-white h-full">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
             {renderView()}
           </div>
-          <Footer setView={setView} />
+          {view !== 'chat' && <Footer setView={setView} />}
         </div>
       </main>
       {isCheckInVisible && (
