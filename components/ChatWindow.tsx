@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+
+import React, { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { Message, Attachment, MessageRole } from '../types';
 import { IMAGES, STICKERS } from '../constants';
 import { fileToBase64 } from '../utils/file';
@@ -16,6 +17,8 @@ interface ChatWindowProps {
   isLoading: boolean;
   onTextToSpeech: (text: string) => void;
   initError: string | null;
+  onLoadMore: () => void;
+  hasMore: boolean;
 }
 
 interface MessageGroup {
@@ -185,7 +188,7 @@ const MessageBubble: React.FC<{
 
 // --- Main Component ---
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage, isLoading, onTextToSpeech, initError }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage, isLoading, onTextToSpeech, initError, onLoadMore, hasMore }) => {
   const [input, setInput] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
@@ -194,14 +197,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
   const [isStickerPickerOpen, setStickerPickerOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stickerPickerRef = useRef<HTMLDivElement>(null);
 
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const previousScrollHeight = useRef(0);
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isLoadingMore) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
-  useEffect(scrollToBottom, [messages, isLoading]);
+  // Scroll to bottom on new messages (unless loading more history)
+  useEffect(scrollToBottom, [messages, isLoading, isLoadingMore]);
+
+  // Maintain scroll position when loading older messages
+  useLayoutEffect(() => {
+      if (isLoadingMore && containerRef.current) {
+          const newScrollHeight = containerRef.current.scrollHeight;
+          const diff = newScrollHeight - previousScrollHeight.current;
+          containerRef.current.scrollTop += diff;
+          setIsLoadingMore(false);
+      }
+  }, [messages, isLoadingMore]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -212,6 +232,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const handleLoadMoreClick = () => {
+      if (containerRef.current) {
+          previousScrollHeight.current = containerRef.current.scrollHeight;
+          setIsLoadingMore(true);
+          onLoadMore();
+      }
+  };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -298,7 +326,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSendMessage,
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-6">
+      <div ref={containerRef} className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-6 scroll-smooth">
+        {hasMore && (
+            <div className="flex justify-center mb-4 pt-2">
+                <button 
+                    onClick={handleLoadMoreClick}
+                    className="px-4 py-1.5 bg-slate-100 text-slate-500 text-xs font-medium rounded-full hover:bg-slate-200 hover:text-slate-700 transition-colors shadow-sm border border-slate-200"
+                >
+                    Load older messages
+                </button>
+            </div>
+        )}
+
         {groupedMessages.map((group, groupIndex) => {
             const isUser = group.role === 'user';
             const showDateHeader = groupIndex === 0 || 

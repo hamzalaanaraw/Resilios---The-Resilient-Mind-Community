@@ -1,8 +1,8 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Chart } from 'chart.js/auto';
-import { CheckInData, WellnessPlanData } from '../types';
-import { FireIcon, SparklesIcon, CalendarIcon } from './Icons';
+import { CheckInData, WellnessPlanData, WellnessPlanEntry } from '../types';
+import { FireIcon, SparklesIcon, CalendarIcon, DocumentTextIcon } from './Icons';
 
 interface WellnessCalendarProps {
   history: CheckInData[];
@@ -176,9 +176,24 @@ export const WellnessCalendar: React.FC<WellnessCalendarProps> = ({ history, onG
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   };
 
+  // Get mood check-in for a specific day
   const getCheckInForDate = (day: number) => {
       const targetDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), day);
       return history.find(h => new Date(h.date).toDateString() === targetDate.toDateString());
+  };
+
+  // Get journal history for a specific day (from Wellness Plan History)
+  const getJournalHistoryForDate = (day: number) => {
+    const targetDateString = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), day).toDateString();
+    
+    // Check journalPrompts history
+    const journalEntries = wellnessPlan.journalPrompts.history?.filter(entry => 
+        new Date(entry.timestamp).toDateString() === targetDateString
+    ) || [];
+
+    // Check generic toolbox history or other sections if needed (optional extension)
+    // For now, focusing on explicit Journal Prompts section history
+    return journalEntries;
   };
 
   const renderCalendar = () => {
@@ -194,29 +209,43 @@ export const WellnessCalendar: React.FC<WellnessCalendarProps> = ({ history, onG
       // Days
       for (let i = 1; i <= daysInMonth; i++) {
           const checkIn = getCheckInForDate(i);
+          const journalEntries = getJournalHistoryForDate(i);
+          const hasJournal = journalEntries.length > 0;
+          
           const isSelected = selectedDate.getDate() === i && selectedDate.getMonth() === calendarViewDate.getMonth() && selectedDate.getFullYear() === calendarViewDate.getFullYear();
           
           days.push(
               <button
                   key={i}
                   onClick={() => setSelectedDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), i))}
-                  className={`h-10 w-10 mx-auto rounded-full flex items-center justify-center text-sm font-medium transition-all
+                  className={`h-10 w-10 mx-auto rounded-full flex flex-col items-center justify-center text-sm font-medium transition-all relative
                     ${isSelected ? 'ring-2 ring-sky-500 ring-offset-2' : ''}
                     ${checkIn 
                         ? 'text-white font-bold' 
-                        : 'text-slate-600 hover:bg-slate-100'}
+                        : hasJournal 
+                            ? 'bg-slate-100 text-slate-700' 
+                            : 'text-slate-600 hover:bg-slate-50'}
                   `}
                   style={{ backgroundColor: checkIn ? moodColors[checkIn.mood as keyof typeof moodColors] : undefined }}
               >
-                  {i}
+                  <span>{i}</span>
+                  {hasJournal && !checkIn && (
+                      <span className="w-1 h-1 bg-sky-400 rounded-full mt-0.5"></span>
+                  )}
+                   {hasJournal && checkIn && (
+                      <span className="w-1 h-1 bg-white/70 rounded-full mt-0.5"></span>
+                  )}
               </button>
           );
       }
       return days;
   };
 
-  // Check-in for the *Selected* date
+  // Get Data for the *Selected* date
   const selectedCheckIn = history.find(h => new Date(h.date).toDateString() === selectedDate.toDateString());
+  const selectedJournalEntries = wellnessPlan.journalPrompts.history?.filter(entry => 
+      new Date(entry.timestamp).toDateString() === selectedDate.toDateString()
+  ) || [];
 
   return (
     <div className="h-full bg-slate-50/50 p-4 overflow-y-auto">
@@ -265,21 +294,23 @@ export const WellnessCalendar: React.FC<WellnessCalendarProps> = ({ history, onG
                         {renderCalendar()}
                     </div>
                     <div className="mt-4 flex items-center justify-center text-xs text-slate-400 gap-2">
-                        <div className="w-3 h-3 rounded-full bg-red-500"></div> Low
-                        <div className="w-3 h-3 rounded-full bg-yellow-500"></div> Okay
-                        <div className="w-3 h-3 rounded-full bg-sky-500"></div> Good
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500"></div> Low</div>
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div> Good</div>
+                        <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-slate-200 border border-slate-300"></div> <span className="w-1 h-1 bg-sky-400 rounded-full inline-block"></span> Journal</div>
                     </div>
                 </div>
 
                 {/* Daily Detail Card */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 min-h-[200px]">
-                    <h3 className="font-bold text-slate-800 mb-1 flex items-center">
+                    <h3 className="font-bold text-slate-800 mb-4 flex items-center">
                         <CalendarIcon />
                         <span className="ml-2">{selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
                     </h3>
                     
+                    {/* Check-in Section */}
                     {selectedCheckIn ? (
-                        <div className="mt-4 animate-fadeIn">
+                        <div className="mb-6 animate-fadeIn">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Daily Check-in</h4>
                             <div className="flex items-center mb-3">
                                 <span className="text-3xl mr-3">{selectedCheckIn.mood >= 8 ? '😄' : selectedCheckIn.mood >= 5 ? '😐' : '😔'}</span>
                                 <div>
@@ -288,18 +319,38 @@ export const WellnessCalendar: React.FC<WellnessCalendarProps> = ({ history, onG
                                 </div>
                             </div>
                             <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Notes</p>
-                                <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedCheckIn.notes || "No notes for this entry."}</p>
+                                <p className="text-sm text-slate-700 whitespace-pre-wrap italic">"{selectedCheckIn.notes || "No notes for this entry."}"</p>
                             </div>
                         </div>
                     ) : (
-                        <div className="h-32 flex flex-col items-center justify-center text-slate-400">
-                            <p className="text-sm">No check-in for this day.</p>
+                        <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-center">
+                            <p className="text-sm text-slate-400">No mood check-in for this day.</p>
                             {selectedDate.toDateString() === new Date().toDateString() && (
                                 <p className="text-xs mt-1 text-sky-500">Click "Daily Check-in" in the menu!</p>
                             )}
                         </div>
                     )}
+
+                    {/* Journal Entries Section */}
+                    <div className="border-t border-slate-100 pt-4">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center">
+                             <DocumentTextIcon />
+                             <span className="ml-1">Journal Entries ({selectedJournalEntries.length})</span>
+                        </h4>
+                        
+                        {selectedJournalEntries.length > 0 ? (
+                            <div className="space-y-3">
+                                {selectedJournalEntries.map((entry) => (
+                                    <div key={entry.id} className="bg-white p-3 border border-sky-100 rounded-lg shadow-sm text-sm text-slate-700 animate-fadeIn">
+                                        <p className="text-xs text-sky-600 mb-1 font-medium">{new Date(entry.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit'})}</p>
+                                        <div className="line-clamp-4 hover:line-clamp-none transition-all">{entry.content}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-400 italic pl-1">No saved journal prompts for this day.</p>
+                        )}
+                    </div>
                 </div>
             </div>
 

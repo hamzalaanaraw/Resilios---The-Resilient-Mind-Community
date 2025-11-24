@@ -77,6 +77,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
        return;
     }
 
+    if (password.length < 6) {
+        setError("Password must be at least 6 characters.");
+        setLoading(false);
+        return;
+    }
+
     // Accept any password for mock purposes
     const name = email.split('@')[0];
     const mockUser: User = {
@@ -96,8 +102,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     await simulateNetwork();
 
-    if (!displayName) {
-        setError("Display name is required.");
+    if (!displayName || displayName.trim().length === 0) {
+        setError("Please enter a display name.");
+        setLoading(false);
+        return;
+    }
+
+    if (!email.includes('@')) {
+        setError("Please enter a valid email address.");
+        setLoading(false);
+        return;
+    }
+
+    if (password.length < 6) {
+        setError("Password is too short (min 6 chars).");
         setLoading(false);
         return;
     }

@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { GroundingChunk } from '../types';
 import { LocationMarkerIcon, SearchIcon } from './Icons';
@@ -14,11 +13,14 @@ interface MapComponentProps {
 
 export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading, results, userLocation, initError }) => {
     const [query, setQuery] = useState('mental health clinic');
+    const [hasAttemptedSearch, setHasAttemptedSearch] = useState(false);
 
     useEffect(() => {
-        // Automatically trigger an initial search on component mount.
-        // This will also trigger the browser's location permission prompt.
-        onSearch(query);
+        // Automatically trigger an initial search on component mount only if no results yet
+        if (results.length === 0 && !hasAttemptedSearch) {
+             onSearch(query);
+             setHasAttemptedSearch(true);
+        }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -27,6 +29,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading,
         e.preventDefault();
         if (query.trim()) {
             onSearch(query.trim());
+            setHasAttemptedSearch(true);
         }
     };
     
@@ -59,15 +62,32 @@ export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading,
                 </form>
 
                 <div className="w-full">
-                     {initError && <p className="text-red-600 text-center p-4 bg-red-50 border border-red-200 rounded-lg">{initError}</p>}
-                     {isLoading && <p className="text-slate-500 text-center">Searching for resources near you...</p>}
+                     {initError && (
+                        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center mb-4 animate-fadeIn">
+                             <p className="text-red-700 font-semibold mb-1">Service Unavailable</p>
+                             <p className="text-red-600 text-sm">{initError}</p>
+                        </div>
+                     )}
                      
-                     {!isLoading && !userLocation && !initError && (
-                        <p className="text-slate-500 text-center p-4 bg-amber-50 border border-amber-200 rounded-lg">Please allow location access in your browser to find local support centers.</p>
+                     {isLoading && (
+                         <div className="text-center py-10">
+                             <div className="w-10 h-10 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin mx-auto mb-3"></div>
+                             <p className="text-slate-500">Searching for resources near you...</p>
+                         </div>
+                     )}
+                     
+                     {!isLoading && !userLocation && !initError && hasAttemptedSearch && (
+                        <div className="text-center p-6 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+                            <p className="text-amber-800 font-medium mb-1">Location Access Needed</p>
+                            <p className="text-amber-700 text-sm">Please allow location access in your browser to find support centers near you.</p>
+                        </div>
                      )}
 
-                     {!isLoading && userLocation && results.length === 0 && !initError && (
-                        <p className="text-slate-500 text-center">No results found for your search. Try a different term like "therapist" or "counseling".</p>
+                     {!isLoading && userLocation && results.length === 0 && !initError && hasAttemptedSearch && (
+                        <div className="text-center p-8 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                             <p className="text-slate-600 font-medium">No results found.</p>
+                             <p className="text-slate-500 text-sm mt-1">Try a different search term like "therapist", "counseling", or "support group".</p>
+                        </div>
                      )}
                      
                      <div className="space-y-3">
@@ -78,12 +98,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading,
                                 key={index}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block p-4 bg-white border border-slate-200 rounded-lg hover:border-sky-400 hover:shadow-md transition"
+                                className="block p-4 bg-white border border-slate-200 rounded-lg hover:border-sky-400 hover:shadow-md transition group animate-fadeIn"
                             >
-                                <h4 className="font-semibold text-sky-800">{chunk.maps.title}</h4>
-                                <div className="flex items-center text-sm text-sky-600 mt-2">
-                                    <LocationMarkerIcon className="h-4 w-4 mr-1"/>
-                                    Open in Google Maps
+                                <div className="flex justify-between items-start">
+                                    <h4 className="font-semibold text-sky-800 group-hover:text-sky-600 transition-colors">{chunk.maps.title}</h4>
+                                    <LocationMarkerIcon className="h-5 w-5 text-slate-300 group-hover:text-sky-500 transition-colors"/>
+                                </div>
+                                <div className="flex items-center text-xs font-bold text-sky-600 mt-3 uppercase tracking-wide">
+                                    Open in Google Maps &rarr;
                                 </div>
                             </a>
                            )

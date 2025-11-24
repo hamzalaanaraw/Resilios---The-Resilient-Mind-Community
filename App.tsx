@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Header } from './components/Header';
@@ -5,7 +6,7 @@ import { ChatWindow } from './components/ChatWindow';
 import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
-import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation, SavedMeditation, WellnessPlanEntry } from './types';
+import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation, SavedMeditation, WellnessPlanEntry, Notification, NotificationType } from './types';
 import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, STICKERS, displaySticker } from './constants';
 import { Nav } from './components/Nav';
 import { decode, decodeAudioData } from './utils/audio';
@@ -22,6 +23,8 @@ import { Footer } from './components/Footer';
 import { LiveHistoryPage } from './components/LiveHistoryPage';
 import { LandingPage } from './components/LandingPage';
 import { FunctionDeclaration, Modality, Type } from '@google/genai';
+import { getFriendlyErrorMessage } from './utils/errors';
+import { NotificationToast } from './components/NotificationToast';
 
 
 // A simple client-side check for crisis phrases.
@@ -53,7 +56,10 @@ const App: React.FC = () => {
   const [view, setView] = useState<View>('chat');
   const [showLandingPage, setShowLandingPage] = useState(true);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Chat State
+  const [allMessages, setAllMessages] = useState<Message[]>(() => loadFromLocalStorage('chatHistory', [], true));
+  const [visibleCount, setVisibleCount] = useState(20);
+
   const [wellnessPlan, setWellnessPlan] = useState<WellnessPlanData>(() => loadFromLocalStorage('wellnessPlan', INITIAL_WELLNESS_PLAN));
   const [isCheckInVisible, setCheckInVisible] = useState(false);
   const [isCrisisModalVisible, setCrisisModalVisible] = useState(false);
@@ -61,6 +67,13 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
   const [latestMood, setLatestMood] = useState<number | null>(() => loadFromLocalStorage('latestMood', null));
+  
+  // Notification State
+  const [notification, setNotification] = useState<Notification | null>(null);
+
+  const showNotification = (type: NotificationType, message: string) => {
+      setNotification({ id: crypto.randomUUID(), type, message });
+  };
   
   // Stats & Calendar state
   const [checkInHistory, setCheckInHistory] = useState<CheckInData[]>(() => loadFromLocalStorage('checkInHistory', [], true));
@@ -127,24 +140,32 @@ const App: React.FC = () => {
     localStorage.setItem('latestMood', JSON.stringify(latestMood));
   }, [latestMood]);
 
+  useEffect(() => {
+    localStorage.setItem('chatHistory', JSON.stringify(allMessages));
+  }, [allMessages]);
+
 
   // Effect to load user data on login
   useEffect(() => {
     if (user) {
-      setShowLandingPage(false); // Hide landing page if user is logged in
-      const userName = user.displayName || user.email?.split('@')[0] || 'friend';
-      // Reset non-persistent state on login, but keep persisted state from localStorage
-      setMessages([
-        {
-          id: crypto.randomUUID(),
-          role: 'model',
-          text: `Welcome back, ${userName}! I'm here to listen. How are you feeling today?`,
-          timestamp: new Date(),
-        },
-      ]);
+      setShowLandingPage(false); 
+      // Only add welcome message if history is completely empty
+      if (allMessages.length === 0) {
+          const userName = user.displayName || user.email?.split('@')[0] || 'friend';
+          setAllMessages([
+            {
+              id: crypto.randomUUID(),
+              role: 'model',
+              text: `Welcome back, ${userName}! I'm here to listen. How are you feeling today?`,
+              timestamp: new Date(),
+            },
+          ]);
+          setVisibleCount(20);
+      }
       setAiInsights('');
       setGeneratedMeditationScript('');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
   
   // Effect to navigate to avatar view on premium subscription
@@ -152,12 +173,10 @@ const App: React.FC = () => {
       if (isPremium && view !== 'liveAvatar') {
           const timeoutId = setTimeout(() => {
               setView('liveAvatar');
-          }, 500); // Short delay to make the transition feel deliberate
+          }, 500);
           return () => clearTimeout(timeoutId);
       }
-  // This effect should ONLY run when `isPremium` changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPremium]);
+  }, [isPremium, view]);
 
 
   const getStickerSuggestions = useCallback(async (text: string): Promise<string[]> => {
@@ -198,7 +217,6 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
         const parsed = JSON.parse(jsonString);
         
         if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
-            // Return unique suggestions
             return [...new Set(parsed.suggestions as string[])];
         }
 
@@ -207,6 +225,14 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
     }
     return [];
   }, []);
+
+  // --- Chat Logic ---
+  const visibleMessages = allMessages.slice(-visibleCount);
+  const hasMoreMessages = allMessages.length > visibleCount;
+
+  const handleLoadMoreMessages = () => {
+      setVisibleCount(prev => prev + 20);
+  };
 
   const handleSendMessage = useCallback(async (text: string, options: {
     attachment?: Attachment,
@@ -236,10 +262,12 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
         ? `(User sent the ${options.sticker} sticker) ${text}` 
         : text;
 
-    setMessages(prev => [...prev, userMessage]);
+    setAllMessages(prev => [...prev, userMessage]);
+    setVisibleCount(prev => prev + 1); // Keep new message visible without hiding top
 
     if (!ai.current) {
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: initError || "Sorry, the chat service isn't available right now.", timestamp: new Date() }]);
+      setAllMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: initError || "Sorry, the chat service isn't available right now.", timestamp: new Date() }]);
+      setVisibleCount(prev => prev + 1);
       setIsLoading(false);
       return;
     }
@@ -259,7 +287,6 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
         });
       }
 
-      // Get user locale and timezone for context
       const userLocale = navigator.language || 'en-US';
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
@@ -310,13 +337,13 @@ MESSAGE: ${modelText}` });
         sticker: stickerName,
       };
       
-      setMessages(prev => [...prev, modelMessage]);
+      setAllMessages(prev => [...prev, modelMessage]);
+      setVisibleCount(prev => prev + 1);
 
-      // Asynchronously fetch and add sticker suggestions
       if (result.text) {
         getStickerSuggestions(result.text).then(suggestions => {
           if (suggestions.length > 0) {
-            setMessages(prev => prev.map(m =>
+            setAllMessages(prev => prev.map(m =>
               m.id === modelMessage.id
                 ? { ...m, suggestedStickers: suggestions }
                 : m
@@ -324,15 +351,20 @@ MESSAGE: ${modelText}` });
           }
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending message to Gemini:", error);
+      
+      const friendlyError = getFriendlyErrorMessage(error);
+      
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: 'model',
-        text: "I'm having a little trouble connecting right now. Please try again in a moment.",
+        text: friendlyError,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setAllMessages(prev => [...prev, errorMessage]);
+      setVisibleCount(prev => prev + 1);
+      showNotification('error', "Failed to send message");
     } finally {
       setIsLoading(false);
     }
@@ -352,7 +384,6 @@ MESSAGE: ${modelText}` });
         content: section.content
     };
 
-    // Prepend new entry to history
     const newHistory = [newEntry, ...(section.history || [])];
 
     const newPlan = {
@@ -363,18 +394,12 @@ MESSAGE: ${modelText}` });
         }
     };
     setWellnessPlan(newPlan);
+    showNotification('success', 'Entry saved to history');
   };
 
   const handleGenerateJournalPrompts = async () => {
     if (!ai.current) {
-        const updatedPlan = {
-             ...wellnessPlan,
-            journalPrompts: {
-                ...wellnessPlan.journalPrompts,
-                content: initError || "Sorry, I couldn't generate prompts right now. Please try again.",
-            }
-        };
-        handleWellnessPlanChange(updatedPlan);
+        showNotification('error', initError || "AI service unavailable");
         return;
     }
     setIsGeneratingPrompts(true);
@@ -394,16 +419,10 @@ MESSAGE: ${modelText}` });
             }
         };
         handleWellnessPlanChange(updatedPlan);
+        showNotification('success', 'Prompts generated!');
     } catch (error) {
         console.error("Error generating journal prompts:", error);
-        const updatedPlan = {
-             ...wellnessPlan,
-            journalPrompts: {
-                ...wellnessPlan.journalPrompts,
-                content: "Sorry, I couldn't generate prompts right now. Please try again.",
-            }
-        };
-        handleWellnessPlanChange(updatedPlan);
+        showNotification('error', getFriendlyErrorMessage(error));
     } finally {
         setIsGeneratingPrompts(false);
     }
@@ -411,7 +430,7 @@ MESSAGE: ${modelText}` });
   
    const handleMapSearch = async (query: string) => {
     if (!ai.current) {
-        alert(initError || "Sorry, the map service isn't available right now.");
+        showNotification('error', initError || "Map service unavailable");
         return;
     }
     setIsMapLoading(true);
@@ -420,7 +439,7 @@ MESSAGE: ${modelText}` });
     let location: { latitude: number, longitude: number } | null = null;
     try {
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 });
         });
         location = {
             latitude: position.coords.latitude,
@@ -429,7 +448,7 @@ MESSAGE: ${modelText}` });
         setMapUserLocation(location);
     } catch (error) {
         console.error("Geolocation error:", error);
-        alert("Could not get your location. Please enable location services in your browser settings to use this feature.");
+        showNotification('error', "Could not access location. Please check browser settings.");
         setIsMapLoading(false);
         return;
     }
@@ -450,7 +469,7 @@ MESSAGE: ${modelText}` });
         setMapResults(chunks.filter(c => c.maps));
     } catch (error) {
         console.error("Error searching for places via Gemini:", error);
-        alert("Sorry, I couldn't fetch local results. Please try again.");
+        showNotification('error', getFriendlyErrorMessage(error));
     } finally {
         setIsMapLoading(false);
     }
@@ -465,6 +484,7 @@ MESSAGE: ${modelText}` });
     
     const checkInText = `My mood is ${mood}/10. Notes: ${notes || 'No notes.'}`;
     handleSendMessage(`(This is a daily check-in) ${checkInText}`, {});
+    showNotification('success', 'Daily check-in saved');
   };
   
   const handleGenerateInsights = async () => {
@@ -473,7 +493,7 @@ MESSAGE: ${modelText}` });
         return;
     }
     if (checkInHistory.length < 3) {
-        setAiInsights("I need a little more data to spot trends. Keep up with your daily check-ins, and I'll have insights for you soon!");
+        showNotification('info', "Check in a few more times to unlock insights.");
         return;
     }
 
@@ -506,6 +526,7 @@ ${JSON.stringify(wellnessPlan)}
     } catch (error) {
         console.error("Error generating insights:", error);
         setAiInsights("I had trouble analyzing the data right now. Please try again in a moment.");
+        showNotification('error', getFriendlyErrorMessage(error));
     } finally {
         setIsGeneratingInsights(false);
     }
@@ -519,6 +540,7 @@ const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]
         transcript: transcript,
     };
     setLiveHistory(prev => [...prev, newConversation]);
+    showNotification('success', 'Conversation saved to history');
 }, []);
 
 const handleTextToSpeech = async (text: string) => {
@@ -545,12 +567,13 @@ const handleTextToSpeech = async (text: string) => {
        }
     } catch(error) {
        console.error("TTS Error:", error);
+       showNotification('error', "Could not play audio. Please check connection.");
     }
  };
 
  const handleGenerateMeditation = async () => {
     if (!ai.current) {
-        setGeneratedMeditationScript(initError || "Sorry, I couldn't create a meditation script right now.");
+        showNotification('error', initError || "AI Service unavailable");
         return;
     }
     setIsGeneratingMeditation(true);
@@ -564,7 +587,7 @@ const handleTextToSpeech = async (text: string) => {
         setGeneratedMeditationScript(result.text);
     } catch (error) {
         console.error("Error generating meditation script:", error);
-        setGeneratedMeditationScript("Sorry, I had trouble creating a meditation script. Please try again.");
+        showNotification('error', getFriendlyErrorMessage(error));
     } finally {
         setIsGeneratingMeditation(false);
     }
@@ -579,13 +602,15 @@ const handleSaveMeditation = (script: string) => {
             script: script,
         };
         setSavedMeditations(prev => [...prev, newMeditation]);
-        setGeneratedMeditationScript(''); // Clear the generated script after saving
+        setGeneratedMeditationScript(''); 
+        showNotification('success', 'Meditation saved!');
     }
 };
 
 const handleDeleteMeditation = (id: string) => {
     if (confirm("Are you sure you want to delete this saved meditation?")) {
         setSavedMeditations(prev => prev.filter(m => m.id !== id));
+        showNotification('success', 'Meditation deleted');
     }
 };
 
@@ -594,11 +619,13 @@ const handleDeleteMeditation = (id: string) => {
     switch (view) {
       case 'chat':
         return <ChatWindow
-                  messages={messages}
+                  messages={visibleMessages}
                   onSendMessage={handleSendMessage}
                   isLoading={isLoading}
                   onTextToSpeech={handleTextToSpeech}
                   initError={initError}
+                  onLoadMore={handleLoadMoreMessages}
+                  hasMore={hasMoreMessages}
                   />;
       case 'plan':
         return <WellnessPlan 
@@ -608,7 +635,6 @@ const handleDeleteMeditation = (id: string) => {
                   onSaveEntry={handleSaveWellnessEntry}
                   isGeneratingPrompts={isGeneratingPrompts}
                   initError={initError}
-                  // AI Meditation Props
                   isGeneratingMeditation={isGeneratingMeditation}
                   generatedMeditationScript={generatedMeditationScript}
                   savedMeditations={savedMeditations}
@@ -646,11 +672,13 @@ const handleDeleteMeditation = (id: string) => {
           return <PoliciesPage />;
       default:
         return <ChatWindow
-                  messages={messages}
+                  messages={visibleMessages}
                   onSendMessage={handleSendMessage}
                   isLoading={isLoading}
                   onTextToSpeech={handleTextToSpeech}
                   initError={initError}
+                  onLoadMore={handleLoadMoreMessages}
+                  hasMore={hasMoreMessages}
                   />;
     }
   };
@@ -668,6 +696,9 @@ const handleDeleteMeditation = (id: string) => {
   return (
     <div className="flex flex-col h-screen font-sans antialiased text-slate-800">
       <Header onMenuClick={() => setIsNavOpen(true)} />
+      
+      <NotificationToast notification={notification} onClose={() => setNotification(null)} />
+
       <main className="flex-1 flex overflow-hidden relative">
         <Nav 
             activeView={view} 
@@ -705,6 +736,7 @@ const handleDeleteMeditation = (id: string) => {
             onSubscribe={() => {
                 subscribe();
                 setSubscriptionModalVisible(false);
+                showNotification('success', 'Welcome to Resilios Premium!');
             }}
           />
       )}
