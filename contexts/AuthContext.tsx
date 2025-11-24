@@ -89,13 +89,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
     }
 
+    // Mock persistence: If logging in as the user currently stored, preserve their verification status.
+    // Otherwise, for a new/different mock user, default to true (simulating an old/existing account).
+    let isEmailVerified = true;
+    const storedUserJSON = localStorage.getItem(STORAGE_KEY_USER);
+    if (storedUserJSON) {
+        try {
+            const storedUser = JSON.parse(storedUserJSON);
+            if (storedUser.email === email) {
+                isEmailVerified = storedUser.emailVerified;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
     const name = email.split('@')[0];
     const mockUser: User = {
       uid: `email-user-${Date.now()}`,
       email: email,
       displayName: name.charAt(0).toUpperCase() + name.slice(1),
       photoURL: null,
-      emailVerified: true // For login in mock, assume verified if account exists (simplification)
+      emailVerified: isEmailVerified
     };
 
     setUser(mockUser);
@@ -131,7 +144,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       email: email,
       displayName: displayName,
       photoURL: null,
-      emailVerified: false // New signups need verification
+      emailVerified: false // New signups must verify email
     };
 
     setUser(mockUser);
@@ -149,7 +162,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await simulateNetwork();
     setUser(null);
     setIsPremium(false);
-    localStorage.removeItem(STORAGE_KEY_USER);
+    // We typically don't clear storage on logout in a real app (just the token), 
+    // but in mock we might want to clear to simulate fresh start, OR keep it to simulate persistence.
+    // Let's keep it to allow the 'loginWithEmail' persistence check to work.
+    // localStorage.removeItem(STORAGE_KEY_USER); 
     localStorage.removeItem(STORAGE_KEY_PREMIUM);
     setLoading(false);
   };
@@ -162,7 +178,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const sendVerificationEmail = async () => {
       setLoading(true);
       await simulateNetwork();
-      // In a real app, this triggers firebase.auth().currentUser.sendEmailVerification()
+      console.log("Verification email sent (mock).");
       setLoading(false);
   };
 
