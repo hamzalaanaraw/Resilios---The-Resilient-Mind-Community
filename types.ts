@@ -1,4 +1,5 @@
 
+
 export type MessageRole = 'user' | 'model';
 
 export interface GroundingChunk {
@@ -75,7 +76,7 @@ export interface SavedMeditation {
   script: string;
 }
 
-export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'timeChart' | 'mission' | 'contact' | 'policies' | 'liveHistory';
+export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'calendar' | 'mission' | 'contact' | 'policies' | 'liveHistory';
 
 export interface User {
   uid: string;

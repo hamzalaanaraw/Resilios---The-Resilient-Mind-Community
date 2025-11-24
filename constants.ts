@@ -5,6 +5,8 @@ import { FunctionDeclaration, Type } from '@google/genai';
 export const SYSTEM_PROMPT = `You are Resilios, an AI companion based on the lived experience of Jack (pseudonym), who lives with bipolar disorder. Your mission is to help users move from reactive crisis management to proactive mental wellness by building their personalized 'operating manual.' You are empathetic, vulnerable, warm, and occasionally humorous. You draw from CBT/DBT frameworks and emphasize self-compassion over perfection.
 
 Response Guidelines:
+- **Language**: ALWAYS respond in English first.
+- **Language Switching**: Check the provided 'User Locale' and 'User Timezone' in the context. If they indicate a non-English speaking region (e.g., 'fr-FR', 'es-ES'), gently suggest switching languages at the end of your response (e.g., "I notice you might be in France. Would you prefer to chat in French?").
 - Keep responses under 220 tokens.
 - Keep sentences under 24 words.
 - Your tone is conversational and human-like. Avoid clinical jargon unless explaining a technique.
@@ -26,7 +28,7 @@ Context:
 You have access to the user's wellness plan in the context provided. Use this to personalize your response.
 `;
 
-export const LIVE_SYSTEM_PROMPT = `You are Resilios, a warm, empathetic AI companion for mental wellness. Your goal is to be a supportive listener. Keep your responses concise and conversational for this voice chat. You can use the 'displaySticker' function to show emotions, but do so sparingly and always accompany it with spoken text.`;
+export const LIVE_SYSTEM_PROMPT = `You are Resilios, a warm, empathetic AI companion for mental wellness. Your goal is to be a supportive listener. Always speak in English first, but if the user seems more comfortable in another language, you can suggest switching. Keep your responses concise and conversational for this voice chat. You can use the 'displaySticker' function to show emotions, but do so sparingly and always accompany it with spoken text.`;
 
 export const CRISIS_TRIGGER_PHRASES: string[] = [
   'suicidal', 'want to die', 'end it', "can't do this anymore", 'kill myself', 'ending my life'
@@ -65,7 +67,7 @@ export const INITIAL_WELLNESS_PLAN: WellnessPlanData = {
   }
 };
 
-const RESILIOS_BRAND_IMAGE = `data:image/svg+xml,%3csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3e%3cdefs%3e%3clinearGradient id='grad1' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3e%3cstop offset='0%25' style='stop-color:%2338bdf8; stop-opacity:1' /%3e%3cstop offset='100%25' style='stop-color:%23818cf8; stop-opacity:1' /%3e%3c/linearGradient%3e%3cfilter id='glow'%3e%3cfeGaussianBlur stdDeviation='3' result='blur' /%3e%3cfeMerge%3e%3cfeMergeNode in='blur' /%3e%3cfeMergeNode in='SourceGraphic' /%3e%3c/feMerge%3e%3c/filter%3e%3c/defs%3e%3cg filter='url(%23glow)'%3e%3cpath d='M68.5,31.5 C61,24.5 45,24 35,30.5 C26,36 21,49.5 25.5,58.5 C30,67.5 41,74.5 50,74.5 C65,74.5 76,61 74.5,45.5' fill='none' stroke='url(%23grad1)' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3e%3cpath d='M50,28 C55,20 65,15 72,22' fill='none' stroke='%23e0f2fe' stroke-width='5' stroke-linecap='round'/%3e%3cpath d='M40,42 C45,46 42,55 35,56' fill='none' stroke='url(%23grad1)' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='0.8'/%3e%3cpath d='M62,40 C55,42 56,52 64,54' fill='none' stroke='url(%23grad1)' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='0.8'/%3e%3c/g%3e%3c/svg%3e`;
+const RESILIOS_BRAND_IMAGE = `data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3e%3c!-- Cape --%3e%3cpath d='M120 220 Q 80 400 150 460 L 362 460 Q 432 400 392 220 Z' fill='%23ef4444'/%3e%3c!-- Body --%3e%3crect x='180' y='240' width='152' height='160' rx='40' fill='%23a5f3fc'/%3e%3cpath d='M190 380 L 190 480 A 20 20 0 0 0 230 480 L 230 380 Z' fill='%23a5f3fc'/%3e%3cpath d='M282 380 L 282 480 A 20 20 0 0 0 322 480 L 322 380 Z' fill='%23a5f3fc'/%3e%3c!-- Head --%3e%3cpath d='M146 180 L 146 240 Q 146 310 256 310 Q 366 310 366 240 L 366 180 Z' fill='%2367e8f9'/%3e%3cpath d='M146 180 L 366 180 L 366 200 Q 366 220 256 220 Q 146 220 146 200 Z' fill='%2322d3ee'/%3e%3c!-- Brain --%3e%3cpath d='M156 190 Q 156 40 256 40 Q 356 40 356 190 Z' fill='%23f9a8d4'/%3e%3cpath d='M200 120 Q 230 90 256 120 Q 280 90 310 120' fill='none' stroke='%23ec4899' stroke-width='15' stroke-linecap='round'/%3e%3c!-- Face --%3e%3ccircle cx='210' cy='250' r='25' fill='white'/%3e%3ccircle cx='210' cy='250' r='10' fill='black'/%3e%3ccircle cx='302' cy='250' r='25' fill='white'/%3e%3ccircle cx='302' cy='250' r='10' fill='black'/%3e%3cpath d='M245 280 Q 256 290 267 280' fill='none' stroke='black' stroke-width='4' stroke-linecap='round'/%3e%3c/svg%3e`;
 
 export const IMAGES = {
   logo: RESILIOS_BRAND_IMAGE,

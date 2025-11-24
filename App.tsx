@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Header } from './components/Header';
@@ -15,12 +14,13 @@ import { AuthScreen } from './components/AuthScreen';
 import { SubscriptionModal } from './components/SubscriptionModal';
 import { MapComponent } from './components/MapComponent';
 import { LiveAvatarView } from './components/LiveAvatarView';
-import { TimeChart } from './components/TimeChart';
+import { WellnessCalendar } from './components/WellnessCalendar';
 import { MissionPage } from './components/MissionPage';
 import { ContactPage } from './components/ContactPage';
 import { PoliciesPage } from './components/PoliciesPage';
 import { Footer } from './components/Footer';
 import { LiveHistoryPage } from './components/LiveHistoryPage';
+import { LandingPage } from './components/LandingPage';
 import { FunctionDeclaration, Modality, Type } from '@google/genai';
 
 
@@ -51,6 +51,8 @@ const App: React.FC = () => {
   const { user, logout, isPremium, subscribe } = useAuth();
 
   const [view, setView] = useState<View>('chat');
+  const [showLandingPage, setShowLandingPage] = useState(true);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [wellnessPlan, setWellnessPlan] = useState<WellnessPlanData>(() => loadFromLocalStorage('wellnessPlan', INITIAL_WELLNESS_PLAN));
   const [isCheckInVisible, setCheckInVisible] = useState(false);
@@ -60,7 +62,7 @@ const App: React.FC = () => {
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
   const [latestMood, setLatestMood] = useState<number | null>(() => loadFromLocalStorage('latestMood', null));
   
-  // TimeChart state
+  // Stats & Calendar state
   const [checkInHistory, setCheckInHistory] = useState<CheckInData[]>(() => loadFromLocalStorage('checkInHistory', [], true));
   const [aiInsights, setAiInsights] = useState('');
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
@@ -129,6 +131,7 @@ const App: React.FC = () => {
   // Effect to load user data on login
   useEffect(() => {
     if (user) {
+      setShowLandingPage(false); // Hide landing page if user is logged in
       const userName = user.displayName || user.email?.split('@')[0] || 'friend';
       // Reset non-persistent state on login, but keep persisted state from localStorage
       setMessages([
@@ -255,7 +258,19 @@ Respond with a JSON object containing a 'suggestions' key with an array of stick
             }
         });
       }
-      parts.push({ text: `CONTEXT: User's Wellness Plan: ${JSON.stringify(wellnessPlan)}\n\n---\n\nMESSAGE: ${modelText}` });
+
+      // Get user locale and timezone for context
+      const userLocale = navigator.language || 'en-US';
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+      parts.push({ text: `CONTEXT: 
+User's Wellness Plan: ${JSON.stringify(wellnessPlan)}
+User Locale: ${userLocale}
+User Timezone: ${userTimezone}
+
+---
+
+MESSAGE: ${modelText}` });
 
       const config: any = {};
       const tools: any[] = [{functionDeclarations: [displaySticker]}];
@@ -610,13 +625,14 @@ const handleDeleteMeditation = (id: string) => {
                   userLocation={mapUserLocation}
                   initError={initError}
                 />;
-       case 'timeChart':
-        return <TimeChart
+       case 'calendar':
+        return <WellnessCalendar
                   history={checkInHistory}
                   onGenerateInsights={handleGenerateInsights}
                   insights={aiInsights}
                   isGenerating={isGeneratingInsights}
                   initError={initError}
+                  wellnessPlan={wellnessPlan}
                 />;
       case 'liveAvatar':
           return <LiveAvatarView ai={ai.current} onSaveConversation={handleSaveLiveConversation} />;
@@ -640,7 +656,13 @@ const handleDeleteMeditation = (id: string) => {
   };
 
   if (!user) {
-    return <AuthScreen />;
+    if (showLandingPage) {
+        return <LandingPage 
+            onGetStarted={() => setShowLandingPage(false)} 
+            onLogin={() => setShowLandingPage(false)} 
+        />;
+    }
+    return <AuthScreen onBack={() => setShowLandingPage(true)} />;
   }
 
   return (
@@ -651,7 +673,10 @@ const handleDeleteMeditation = (id: string) => {
             activeView={view} 
             setView={setView} 
             onCheckInClick={() => setCheckInVisible(true)} 
-            onLogout={logout}
+            onLogout={() => {
+                logout();
+                setShowLandingPage(true);
+            }}
             onGoPremium={() => setSubscriptionModalVisible(true)}
             isPremium={isPremium}
             latestMood={latestMood}
