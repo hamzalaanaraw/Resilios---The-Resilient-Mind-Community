@@ -1,761 +1,284 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
+import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { db } from "./firebase/config";
 import { Header } from './components/Header';
 import { ChatWindow } from './components/ChatWindow';
 import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
-import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveTranscriptPart, LiveConversation, SavedMeditation, WellnessPlanEntry, Notification, NotificationType } from './types';
+import { DailyFocus } from './components/DailyFocus';
+import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveConversation, SavedMeditation, Notification, NotificationType } from './types';
 import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, STICKERS, displaySticker } from './constants';
 import { Nav } from './components/Nav';
-import { decode, decodeAudioData } from './utils/audio';
 import { useAuth } from './contexts/AuthContext';
 import { AuthScreen } from './components/AuthScreen';
 import { SubscriptionModal } from './components/SubscriptionModal';
-import { MapComponent } from './components/MapComponent';
 import { LiveAvatarView } from './components/LiveAvatarView';
 import { WellnessCalendar } from './components/WellnessCalendar';
-import { MissionPage } from './components/MissionPage';
-import { ContactPage } from './components/ContactPage';
-import { PoliciesPage } from './components/PoliciesPage';
-import { Footer } from './components/Footer';
 import { LiveHistoryPage } from './components/LiveHistoryPage';
 import { LandingPage } from './components/LandingPage';
-import { FunctionDeclaration, Modality, Type } from '@google/genai';
-import { getFriendlyErrorMessage } from './utils/errors';
 import { NotificationToast } from './components/NotificationToast';
 import { VerifyEmailScreen } from './components/VerifyEmailScreen';
 
-
-// A simple client-side check for crisis phrases.
-const checkForCrisis = (text: string): boolean => {
-  const lowerCaseText = text.toLowerCase();
-  return CRISIS_TRIGGER_PHRASES.some(phrase => lowerCaseText.includes(phrase));
-};
-
-const loadFromLocalStorage = (key: string, defaultValue: any, parseDates: boolean = false) => {
-  try {
-    const saved = localStorage.getItem(key);
-    if (!saved) return defaultValue;
-    const parsed = JSON.parse(saved);
-    if (parseDates && Array.isArray(parsed)) {
-      // JSON stringifies dates as strings, so we need to convert them back to Date objects
-      return parsed.map((item: any) => ({ ...item, date: new Date(item.date), timestamp: item.timestamp ? new Date(item.timestamp) : undefined }));
-    }
-    return parsed;
-  } catch (error) {
-    console.error(`Error reading from localStorage for key "${key}":`, error);
-    return defaultValue;
-  }
-};
-
+const DAILY_LIMIT = 100;
 
 const App: React.FC = () => {
   const { user, logout, isPremium, subscribe } = useAuth();
-
   const [view, setView] = useState<View>('chat');
   const [showLandingPage, setShowLandingPage] = useState(true);
 
-  // Chat State
-  const [allMessages, setAllMessages] = useState<Message[]>(() => loadFromLocalStorage('chatHistory', [], true));
-  const [visibleCount, setVisibleCount] = useState(20);
-
-  const [wellnessPlan, setWellnessPlan] = useState<WellnessPlanData>(() => loadFromLocalStorage('wellnessPlan', INITIAL_WELLNESS_PLAN));
+  const [usage, setUsage] = useState({ count: 0, date: new Date().toDateString() });
+  const [dailyChallenge, setDailyChallenge] = useState({ text: "", completed: false });
+  const [allMessages, setAllMessages] = useState<Message[]>([]);
+  const [wellnessPlan, setWellnessPlan] = useState<WellnessPlanData>(INITIAL_WELLNESS_PLAN);
   const [isCheckInVisible, setCheckInVisible] = useState(false);
   const [isCrisisModalVisible, setCrisisModalVisible] = useState(false);
   const [isSubscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
-  const [latestMood, setLatestMood] = useState<number | null>(() => loadFromLocalStorage('latestMood', null));
-  
-  // Notification State
+  const [latestMood, setLatestMood] = useState<number | null>(null);
   const [notification, setNotification] = useState<Notification | null>(null);
-
-  const showNotification = (type: NotificationType, message: string) => {
-      setNotification({ id: crypto.randomUUID(), type, message });
-  };
-  
-  // Stats & Calendar state
-  const [checkInHistory, setCheckInHistory] = useState<CheckInData[]>(() => loadFromLocalStorage('checkInHistory', [], true));
-  const [aiInsights, setAiInsights] = useState('');
-  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-
-  // AI Guided Meditation state
-  const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
-  const [generatedMeditationScript, setGeneratedMeditationScript] = useState('');
-  const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>(() => loadFromLocalStorage('savedMeditations', []));
-  
-  // Voice History state
-  const [liveHistory, setLiveHistory] = useState<LiveConversation[]>(() => loadFromLocalStorage('liveHistory', [], true));
-
-
-  // Nav state
+  const [checkInHistory, setCheckInHistory] = useState<CheckInData[]>([]);
+  const [liveHistory, setLiveHistory] = useState<LiveConversation[]>([]);
+  const [initError, setInitError] = useState<string | null>(null);
   const [isNavOpen, setIsNavOpen] = useState(false);
 
-  // Map State
-  const [isMapLoading, setIsMapLoading] = useState(false);
-  const [mapResults, setMapResults] = useState<GroundingChunk[]>([]);
-  const [mapUserLocation, setMapUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
+  // States for WellnessPlan components
+  const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
+  const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
+  const [generatedMeditationScript, setGeneratedMeditationScript] = useState("");
+  const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>([]);
   
-  // AI Client State
-  const [initError, setInitError] = useState<string | null>(null);
-  const ai = useRef<GoogleGenAI | null>(null);
-  
-  // Initialize AI client
-  const initializeAI = useCallback(() => {
-    setInitError(null); // Clear previous errors on retry
-    const API_KEY = "AIzaSyBjzZaDPlHrzXh--9tE9JW32kxwXGzTReQ";
-    if (API_KEY) {
-      try {
-        ai.current = new GoogleGenAI({ apiKey: API_KEY });
-        // Optional: Show success toast if it's a retry (implicitly checked by clearing error)
-        // We can't easily check 'previous error' here due to closure, but the user seeing the error clear is good enough.
-      } catch (e) {
-        console.error("Failed to initialize GoogleGenAI:", e);
-        setInitError("Could not connect to AI service. Please check your internet connection or try again later.");
-      }
+  const aiRef = useRef<GoogleGenAI | null>(null);
+
+  // Initialize AI client using the provided environment variable
+  useEffect(() => {
+    if (process.env.API_KEY) {
+      aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
     } else {
-      console.error("API_KEY environment variable not set.");
-      setInitError("System configuration error: API Key is missing. Please contact support.");
+      setInitError("API Connection missing.");
     }
   }, []);
 
   useEffect(() => {
-    initializeAI();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Effect to save data to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('wellnessPlan', JSON.stringify(wellnessPlan));
-  }, [wellnessPlan]);
-  
-  useEffect(() => {
-    localStorage.setItem('checkInHistory', JSON.stringify(checkInHistory));
-  }, [checkInHistory]);
-
-  useEffect(() => {
-    localStorage.setItem('liveHistory', JSON.stringify(liveHistory));
-  }, [liveHistory]);
-
-  useEffect(() => {
-    localStorage.setItem('savedMeditations', JSON.stringify(savedMeditations));
-  }, [savedMeditations]);
-
-  useEffect(() => {
-    localStorage.setItem('latestMood', JSON.stringify(latestMood));
-  }, [latestMood]);
-
-  useEffect(() => {
-    localStorage.setItem('chatHistory', JSON.stringify(allMessages));
-  }, [allMessages]);
-
-
-  // Effect to load user data on login
-  useEffect(() => {
-    if (user) {
-      setShowLandingPage(false); 
-      // Only add welcome message if history is completely empty
-      if (allMessages.length === 0) {
-          const userName = user.displayName || user.email?.split('@')[0] || 'friend';
-          setAllMessages([
-            {
-              id: crypto.randomUUID(),
-              role: 'model',
-              text: `Welcome back, ${userName}! I'm here to listen. How are you feeling today?`,
-              timestamp: new Date(),
-            },
-          ]);
-          setVisibleCount(20);
-      }
-      setAiInsights('');
-      setGeneratedMeditationScript('');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-  
-  // Effect to navigate to avatar view on premium subscription
-  useEffect(() => {
-      if (isPremium && view !== 'liveAvatar') {
-          const timeoutId = setTimeout(() => {
-              setView('liveAvatar');
-          }, 500);
-          return () => clearTimeout(timeoutId);
-      }
-  }, [isPremium, view]);
-
-
-  const getStickerSuggestions = useCallback(async (text: string): Promise<string[]> => {
-    if (!ai.current || !text.trim()) return [];
-
-    try {
-        const stickerNames = Object.keys(STICKERS);
-
-        const prompt = `Analyze the following message from a mental health chatbot. Suggest up to 3 stickers a user could send as a quick reply. The reply should match the emotion or topic of the chatbot's message.
-Message: "${text}"
-Available stickers: ${stickerNames.join(', ')}
-Respond with a JSON object containing a 'suggestions' key with an array of sticker names.`;
-
-        const responseSchema = {
-            type: Type.OBJECT,
-            properties: {
-                suggestions: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.STRING,
-                        enum: stickerNames,
-                    }
-                }
-            },
-            required: ['suggestions'],
-        };
-
-        const result = await ai.current.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: responseSchema,
-            }
-        });
-
-        const jsonString = result.text.trim();
-        const parsed = JSON.parse(jsonString);
-        
-        if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
-            return [...new Set(parsed.suggestions as string[])];
+    if (!user) return;
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.wellnessPlan) setWellnessPlan(data.wellnessPlan);
+        if (data.challenge && data.challenge.date === new Date().toDateString()) {
+            setDailyChallenge({ text: data.challenge.text, completed: data.challenge.completed });
         }
+        if (data.usage && data.usage.date === new Date().toDateString()) {
+          setUsage(data.usage);
+        } else {
+          updateDoc(userDocRef, { "usage.count": 0, "usage.date": new Date().toDateString() });
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [user]);
 
-    } catch (error) {
-        console.error("Error getting sticker suggestions:", error);
-    }
-    return [];
-  }, []);
-
-  // --- Chat Logic ---
-  const visibleMessages = allMessages.slice(-visibleCount);
-  const hasMoreMessages = allMessages.length > visibleCount;
-
-  const handleLoadMoreMessages = () => {
-      setVisibleCount(prev => prev + 20);
+  const generateDailyChallenge = async () => {
+    if (!aiRef.current || !user) return;
+    try {
+        const result = await aiRef.current.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: { parts: [{ text: `Based on this Wellness Plan: ${JSON.stringify(wellnessPlan)}, suggest one VERY SMALL (micro-step) daily resilience task (max 10 words). Focus on stability.` }] }
+        });
+        // Accessing .text property as per @google/genai guidelines
+        const text = result.text?.trim().replace(/"/g, '') || '';
+        const userDocRef = doc(db, "users", user.uid);
+        await updateDoc(userDocRef, { 
+            challenge: { text, completed: false, date: new Date().toDateString() } 
+        });
+    } catch (e) { console.error(e); }
   };
 
-  const handleSendMessage = useCallback(async (text: string, options: {
-    attachment?: Attachment,
-    isSearchEnabled?: boolean,
-    isDeepThinkingEnabled?: boolean,
-    userLocation?: { latitude: number, longitude: number } | null,
-    sticker?: string,
-  }) => {
-    if (checkForCrisis(text)) {
+  useEffect(() => {
+      if (user && !dailyChallenge.text) {
+          generateDailyChallenge();
+      }
+  }, [user, dailyChallenge.text]);
+
+  const toggleChallenge = async () => {
+    if (!user) return;
+    const userDocRef = doc(db, "users", user.uid);
+    await updateDoc(userDocRef, { "challenge.completed": !dailyChallenge.completed });
+  };
+
+  const handleSendMessage = useCallback(async (text: string, options: { attachment?: Attachment }) => {
+    if (CRISIS_TRIGGER_PHRASES.some(p => text.toLowerCase().includes(p))) {
       setCrisisModalVisible(true);
       return;
     }
 
-    setIsLoading(true);
-
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      text,
-      timestamp: new Date(),
-      attachment: options.attachment,
-      sticker: options.sticker,
-      wasDeepThinking: options.isDeepThinkingEnabled,
-    };
-
-    const modelText = options.sticker 
-        ? `(User sent the ${options.sticker} sticker) ${text}` 
-        : text;
-
-    setAllMessages(prev => [...prev, userMessage]);
-    setVisibleCount(prev => prev + 1); // Keep new message visible without hiding top
-
-    if (!ai.current) {
-      setAllMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: initError || "Sorry, the chat service isn't available right now.", timestamp: new Date() }]);
-      setVisibleCount(prev => prev + 1);
-      setIsLoading(false);
+    if (!isPremium && usage.count >= DAILY_LIMIT) {
+      setSubscriptionModalVisible(true);
       return;
     }
 
+    setIsLoading(true);
+    if (user) {
+        const userDocRef = doc(db, "users", user.uid);
+        updateDoc(userDocRef, { "usage.count": usage.count + 1 });
+    }
+
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', text, timestamp: new Date(), attachment: options.attachment };
+    setAllMessages(prev => [...prev, userMsg]);
+
     try {
-      const isVideo = options.attachment?.mimeType.startsWith('video/');
-      const modelName = isVideo || options.isDeepThinkingEnabled ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+      if (!aiRef.current) throw new Error("AI not ready");
 
-      const parts: any[] = [];
-
-      if(options.attachment) {
+      const parts: any[] = [{ text: `CONTEXT: ${JSON.stringify(wellnessPlan)}\nMOOD: ${latestMood}\nCHALLENGE_STATUS: ${dailyChallenge.completed ? 'Done' : 'Pending'}\nUSER: ${text}` }];
+      if (options.attachment) {
         parts.push({
-            inlineData: {
-                mimeType: options.attachment.mimeType,
-                data: options.attachment.data
-            }
-        });
-      }
-
-      const userLocale = navigator.language || 'en-US';
-      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-
-      parts.push({ text: `CONTEXT: 
-User's Wellness Plan: ${JSON.stringify(wellnessPlan)}
-User Locale: ${userLocale}
-User Timezone: ${userTimezone}
-
----
-
-MESSAGE: ${modelText}` });
-
-      const config: any = {};
-      const tools: any[] = [{functionDeclarations: [displaySticker]}];
-      if (options.isSearchEnabled) tools.push({ googleSearch: {} });
-      if (options.userLocation) tools.push({ googleMaps: {} });
-
-      config.tools = tools;
-      
-      if (options.userLocation) {
-        config.toolConfig = { retrievalConfig: { latLng: { ...options.userLocation }}};
-      }
-      if (options.isDeepThinkingEnabled || isVideo) {
-          config.thinkingConfig = { thinkingBudget: 32768 };
-      }
-
-      const result = await ai.current.models.generateContent({
-        model: modelName,
-        contents: { parts: parts },
-        ... (Object.keys(config).length > 0 && { config })
-      });
-      
-      let stickerName: string | undefined;
-      const functionCalls = result.functionCalls;
-      if (functionCalls && functionCalls.length > 0) {
-        const stickerCall = functionCalls.find(fc => fc.name === 'displaySticker');
-        if (stickerCall) {
-            stickerName = stickerCall.args.stickerName as string;
-        }
-      }
-
-      const modelMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'model',
-        text: result.text,
-        timestamp: new Date(),
-        groundingChunks: result.candidates?.[0]?.groundingMetadata?.groundingChunks as GroundingChunk[] || [],
-        sticker: stickerName,
-      };
-      
-      setAllMessages(prev => [...prev, modelMessage]);
-      setVisibleCount(prev => prev + 1);
-
-      if (result.text) {
-        getStickerSuggestions(result.text).then(suggestions => {
-          if (suggestions.length > 0) {
-            setAllMessages(prev => prev.map(m =>
-              m.id === modelMessage.id
-                ? { ...m, suggestedStickers: suggestions }
-                : m
-            ));
+          inlineData: {
+            data: options.attachment.data,
+            mimeType: options.attachment.mimeType
           }
         });
       }
-    } catch (error: any) {
-      console.error("Error sending message to Gemini:", error);
-      
-      const friendlyError = getFriendlyErrorMessage(error);
-      
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'model',
-        text: friendlyError,
-        timestamp: new Date(),
-      };
-      setAllMessages(prev => [...prev, errorMessage]);
-      setVisibleCount(prev => prev + 1);
-      showNotification('error', "Failed to send message");
+
+      const result = await aiRef.current.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: { parts }
+      });
+
+      // result.text is a property, not a method
+      const modelMsg: Message = { id: crypto.randomUUID(), role: 'model', text: result.text || '', timestamp: new Date() };
+      setAllMessages(prev => [...prev, modelMsg]);
+    } catch (e) {
+      setNotification({ id: 'err', type: 'error', message: "AI connection lost." });
     } finally {
       setIsLoading(false);
     }
-  }, [wellnessPlan, getStickerSuggestions, initError]);
+  }, [isPremium, usage.count, wellnessPlan, user, latestMood, dailyChallenge.completed]);
 
-  const handleWellnessPlanChange = (newPlan: WellnessPlanData) => {
-    setWellnessPlan(newPlan);
-  };
-  
-  const handleSaveWellnessEntry = (key: keyof WellnessPlanData) => {
-    const section = wellnessPlan[key];
-    if (!section.content.trim()) return;
-
-    const newEntry: WellnessPlanEntry = {
-        id: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        content: section.content
-    };
-
-    const newHistory = [newEntry, ...(section.history || [])];
-
-    const newPlan = {
-        ...wellnessPlan,
-        [key]: {
-            ...section,
-            history: newHistory
-        }
-    };
-    setWellnessPlan(newPlan);
-    showNotification('success', 'Entry saved to history');
-  };
-
-  const handleGenerateJournalPrompts = async () => {
-    if (!ai.current) {
-        showNotification('error', initError || "AI service unavailable");
-        return;
-    }
+  // Wellness Plan Handlers
+  const handleGeneratePrompts = async () => {
+    if (!aiRef.current) return;
     setIsGeneratingPrompts(true);
     try {
-        const prompt = `Based on the user's wellness plan below, generate 3 thoughtful and personalized journal prompts to encourage self-reflection. The prompts should be concise, open-ended, and sensitive to mental health topics. Return them as a numbered list (e.g., "1. ...").\n\n---\n\nWELLNESS PLAN CONTEXT:\n${JSON.stringify(wellnessPlan)}`;
-        
-        const result = await ai.current.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-
-        const updatedPlan = {
-            ...wellnessPlan,
-            journalPrompts: {
-                ...wellnessPlan.journalPrompts,
-                content: result.text.trim(),
-            }
-        };
-        handleWellnessPlanChange(updatedPlan);
-        showNotification('success', 'Prompts generated!');
-    } catch (error) {
-        console.error("Error generating journal prompts:", error);
-        showNotification('error', getFriendlyErrorMessage(error));
+      const result = await aiRef.current.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Based on my current wellness plan: ${JSON.stringify(wellnessPlan)}, generate 5 personalized deep reflection journal prompts.`
+      });
+      setWellnessPlan(prev => ({
+        ...prev,
+        journalPrompts: { ...prev.journalPrompts, content: result.text || '' }
+      }));
+    } catch (e) {
+      setNotification({ id: 'err', type: 'error', message: "Failed to generate prompts." });
     } finally {
-        setIsGeneratingPrompts(false);
-    }
-  };
-  
-   const handleMapSearch = async (query: string) => {
-    if (!ai.current) {
-        showNotification('error', initError || "Map service unavailable");
-        return;
-    }
-    setIsMapLoading(true);
-    setMapResults([]);
-
-    let location: { latitude: number, longitude: number } | null = null;
-    try {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 });
-        });
-        location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-        };
-        setMapUserLocation(location);
-    } catch (error) {
-        console.error("Geolocation error:", error);
-        showNotification('error', "Could not access location. Please check browser settings.");
-        setIsMapLoading(false);
-        return;
-    }
-
-    try {
-        const result = await ai.current.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Find ${query} near me.`,
-            config: {
-                tools: [{ googleMaps: {} }],
-                toolConfig: {
-                    retrievalConfig: { latLng: { ...location } }
-                }
-            }
-        });
-        
-        const chunks = result.candidates?.[0]?.groundingMetadata?.groundingChunks as GroundingChunk[] || [];
-        setMapResults(chunks.filter(c => c.maps));
-    } catch (error) {
-        console.error("Error searching for places via Gemini:", error);
-        showNotification('error', getFriendlyErrorMessage(error));
-    } finally {
-        setIsMapLoading(false);
+      setIsGeneratingPrompts(false);
     }
   };
 
-  const handleCheckInSubmit = async (mood: number, notes: string) => {
-    setCheckInVisible(false);
-    setLatestMood(mood);
-
-    const newCheckIn: CheckInData = { mood, notes, date: new Date() };
-    setCheckInHistory(prev => [...prev, newCheckIn]);
-    
-    const checkInText = `My mood is ${mood}/10. Notes: ${notes || 'No notes.'}`;
-    handleSendMessage(`(This is a daily check-in) ${checkInText}`, {});
-    showNotification('success', 'Daily check-in saved');
-  };
-  
-  const handleGenerateInsights = async () => {
-    if (!ai.current) {
-        setAiInsights(initError || "Sorry, the AI service isn't available right now.");
-        return;
-    }
-    if (checkInHistory.length < 3) {
-        showNotification('info', "Check in a few more times to unlock insights.");
-        return;
-    }
-
-    setIsGeneratingInsights(true);
-    setAiInsights('');
-
-    const historySummary = checkInHistory
-        .map(c => `Date: ${c.date.toLocaleDateString()}, Mood: ${c.mood}/10, Notes: "${c.notes}"`)
-        .join('\n');
-
-    const prompt = `Based on the user's mood history and wellness plan below, generate thoughtful insights about their journey. Identify potential patterns, correlations between their notes and mood, and offer gentle, encouraging observations. Do not give medical advice. Frame the insights positively, focusing on progress and self-awareness. The response should be in markdown format with headings (e.g., ###) and bullet points (e.g., *).
-
----
-
-MOOD HISTORY:
-${historySummary}
-
----
-
-WELLNESS PLAN CONTEXT:
-${JSON.stringify(wellnessPlan)}
-`;
-
-    try {
-        const result = await ai.current.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-        setAiInsights(result.text);
-    } catch (error) {
-        console.error("Error generating insights:", error);
-        setAiInsights("I had trouble analyzing the data right now. Please try again in a moment.");
-        showNotification('error', getFriendlyErrorMessage(error));
-    } finally {
-        setIsGeneratingInsights(false);
-    }
-};
-
-const handleSaveLiveConversation = useCallback((transcript: LiveTranscriptPart[]) => {
-    if (transcript.length === 0) return;
-    const newConversation: LiveConversation = {
-        id: crypto.randomUUID(),
-        timestamp: new Date(),
-        transcript: transcript,
+  const handleSaveEntry = async (key: keyof WellnessPlanData) => {
+    if (!user) return;
+    const section = wellnessPlan[key];
+    const newEntry = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      content: section.content
     };
-    setLiveHistory(prev => [...prev, newConversation]);
-    showNotification('success', 'Conversation saved to history');
-}, []);
+    const updatedHistory = [newEntry, ...(section.history || [])];
+    const updatedPlan = {
+      ...wellnessPlan,
+      [key]: { ...section, history: updatedHistory }
+    };
+    setWellnessPlan(updatedPlan);
+    const userDocRef = doc(db, "users", user.uid);
+    await updateDoc(userDocRef, { wellnessPlan: updatedPlan });
+  };
 
-const handleTextToSpeech = async (text: string) => {
-    if (!ai.current) return null;
-    try {
-       const response = await ai.current.models.generateContent({
-           model: "gemini-2.5-flash-preview-tts",
-           contents: [{ parts: [{ text }] }],
-           config: {
-               responseModalities: [Modality.AUDIO],
-               speechConfig: {
-                   voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-               },
-           },
-       });
-       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-       if (base64Audio) {
-           const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-           const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
-           const source = outputAudioContext.createBufferSource();
-           source.buffer = audioBuffer;
-           source.connect(outputAudioContext.destination);
-           source.start();
-       }
-    } catch(error) {
-       console.error("TTS Error:", error);
-       showNotification('error', "Could not play audio. Please check connection.");
-    }
- };
-
- const handleGenerateMeditation = async () => {
-    if (!ai.current) {
-        showNotification('error', initError || "AI Service unavailable");
-        return;
-    }
+  const handleGenerateMeditation = async () => {
+    if (!aiRef.current) return;
     setIsGeneratingMeditation(true);
-    setGeneratedMeditationScript('');
     try {
-        const prompt = "Generate a short, unique 1-2 minute guided meditation script focused on mindfulness, grounding, or self-compassion. The tone should be calm, gentle, and soothing. Structure it with clear pauses indicated by paragraph breaks.";
-        const result = await ai.current.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-        setGeneratedMeditationScript(result.text);
-    } catch (error) {
-        console.error("Error generating meditation script:", error);
-        showNotification('error', getFriendlyErrorMessage(error));
+      const result = await aiRef.current.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: "Write a short, 3-minute guided meditation script focusing on resilience and grounding. Keep it peaceful and slow-paced."
+      });
+      setGeneratedMeditationScript(result.text || '');
+    } catch (e) {
+      setNotification({ id: 'err', type: 'error', message: "Failed to generate meditation." });
     } finally {
-        setIsGeneratingMeditation(false);
-    }
-};
-
-const handleSaveMeditation = (script: string) => {
-    const name = prompt("Save this meditation as:", `Mindful Moment #${savedMeditations.length + 1}`);
-    if (name && name.trim() && script) {
-        const newMeditation: SavedMeditation = {
-            id: crypto.randomUUID(),
-            name: name.trim(),
-            script: script,
-        };
-        setSavedMeditations(prev => [...prev, newMeditation]);
-        setGeneratedMeditationScript(''); 
-        showNotification('success', 'Meditation saved!');
-    }
-};
-
-const handleDeleteMeditation = (id: string) => {
-    if (confirm("Are you sure you want to delete this saved meditation?")) {
-        setSavedMeditations(prev => prev.filter(m => m.id !== id));
-        showNotification('success', 'Meditation deleted');
-    }
-};
-
-
-  const renderView = () => {
-    switch (view) {
-      case 'chat':
-        return <ChatWindow
-                  messages={visibleMessages}
-                  onSendMessage={handleSendMessage}
-                  isLoading={isLoading}
-                  onTextToSpeech={handleTextToSpeech}
-                  initError={initError}
-                  onLoadMore={handleLoadMoreMessages}
-                  hasMore={hasMoreMessages}
-                  onRetryConnection={initializeAI}
-                  />;
-      case 'plan':
-        return <WellnessPlan 
-                  plan={wellnessPlan} 
-                  onPlanChange={handleWellnessPlanChange}
-                  onGeneratePrompts={handleGenerateJournalPrompts}
-                  onSaveEntry={handleSaveWellnessEntry}
-                  isGeneratingPrompts={isGeneratingPrompts}
-                  initError={initError}
-                  isGeneratingMeditation={isGeneratingMeditation}
-                  generatedMeditationScript={generatedMeditationScript}
-                  savedMeditations={savedMeditations}
-                  onGenerateMeditation={handleGenerateMeditation}
-                  onPlayMeditation={handleTextToSpeech}
-                  onSaveMeditation={handleSaveMeditation}
-                  onDeleteMeditation={handleDeleteMeditation}
-                />;
-      case 'map':
-        return <MapComponent
-                  onSearch={handleMapSearch}
-                  isLoading={isMapLoading}
-                  results={mapResults}
-                  userLocation={mapUserLocation}
-                  initError={initError}
-                  onRetryConnection={initializeAI}
-                />;
-       case 'calendar':
-        return <WellnessCalendar
-                  history={checkInHistory}
-                  onGenerateInsights={handleGenerateInsights}
-                  insights={aiInsights}
-                  isGenerating={isGeneratingInsights}
-                  initError={initError}
-                  wellnessPlan={wellnessPlan}
-                />;
-      case 'liveAvatar':
-          return <LiveAvatarView ai={ai.current} onSaveConversation={handleSaveLiveConversation} />;
-      case 'liveHistory':
-          return <LiveHistoryPage history={liveHistory} />;
-      case 'mission':
-          return <MissionPage />;
-      case 'contact':
-          return <ContactPage />;
-      case 'policies':
-          return <PoliciesPage />;
-      default:
-        return <ChatWindow
-                  messages={visibleMessages}
-                  onSendMessage={handleSendMessage}
-                  isLoading={isLoading}
-                  onTextToSpeech={handleTextToSpeech}
-                  initError={initError}
-                  onLoadMore={handleLoadMoreMessages}
-                  hasMore={hasMoreMessages}
-                  onRetryConnection={initializeAI}
-                  />;
+      setIsGeneratingMeditation(false);
     }
   };
 
-  if (!user) {
-    if (showLandingPage) {
-        return <LandingPage 
-            onGetStarted={() => setShowLandingPage(false)} 
-            onLogin={() => setShowLandingPage(false)} 
-        />;
-    }
-    return <AuthScreen onBack={() => setShowLandingPage(true)} />;
-  }
+  const handleSaveMeditation = (script: string) => {
+    const newMeditation: SavedMeditation = {
+      id: crypto.randomUUID(),
+      name: `Meditation ${new Date().toLocaleDateString()}`,
+      script
+    };
+    setSavedMeditations(prev => [...prev, newMeditation]);
+    setGeneratedMeditationScript("");
+    setNotification({ id: 'saved', type: 'success', message: "Meditation saved to favorites!" });
+  };
 
-  if (user && !user.emailVerified) {
-      return <VerifyEmailScreen />;
-  }
+  if (!user) return showLandingPage ? <LandingPage onGetStarted={() => setShowLandingPage(false)} onLogin={() => setShowLandingPage(false)} /> : <AuthScreen onBack={() => setShowLandingPage(true)} />;
+  if (!user.emailVerified) return <VerifyEmailScreen />;
 
   return (
-    <div className="flex flex-col h-[100dvh] font-sans antialiased text-slate-800 overflow-hidden">
+    <div className="flex flex-col h-[100dvh] font-sans antialiased text-slate-800 overflow-hidden bg-slate-50">
       <Header onMenuClick={() => setIsNavOpen(true)} />
-      
       <NotificationToast notification={notification} onClose={() => setNotification(null)} />
 
-      <main className="flex-1 flex overflow-hidden relative">
-        <Nav 
-            activeView={view} 
-            setView={setView} 
-            onCheckInClick={() => setCheckInVisible(true)} 
-            onLogout={() => {
-                logout();
-                setShowLandingPage(true);
-            }}
-            onGoPremium={() => setSubscriptionModalVisible(true)}
-            isPremium={isPremium}
-            latestMood={latestMood}
-            isNavOpen={isNavOpen}
-            onClose={() => setIsNavOpen(false)}
-        />
-        <div className="flex-1 flex flex-col bg-white h-full">
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
-            {renderView()}
-          </div>
-          {view !== 'chat' && <Footer setView={setView} />}
+      <main className="flex-1 flex overflow-hidden">
+        <Nav activeView={view} setView={setView} onCheckInClick={() => setCheckInVisible(true)} onLogout={() => { logout(); setShowLandingPage(true); }} onGoPremium={() => setSubscriptionModalVisible(true)} isPremium={isPremium} latestMood={latestMood} isNavOpen={isNavOpen} onClose={() => setIsNavOpen(false)} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {view === 'chat' && (
+            <>
+              <DailyFocus challenge={dailyChallenge.text} isCompleted={dailyChallenge.completed} onToggle={toggleChallenge} />
+              <ChatWindow 
+                messages={allMessages} 
+                onSendMessage={handleSendMessage} 
+                isLoading={isLoading} 
+                onTextToSpeech={() => {}} 
+                usageCount={usage.count} 
+                dailyLimit={DAILY_LIMIT} 
+                isPremium={isPremium} 
+                latestMood={latestMood} 
+                initError={initError} 
+                onLoadMore={() => {}} 
+                hasMore={false} 
+              />
+            </>
+          )}
+          {view === 'plan' && (
+            <WellnessPlan 
+              plan={wellnessPlan} 
+              onPlanChange={(p) => setWellnessPlan(p)} 
+              onGeneratePrompts={handleGeneratePrompts}
+              onSaveEntry={handleSaveEntry}
+              isGeneratingPrompts={isGeneratingPrompts}
+              initError={initError}
+              isGeneratingMeditation={isGeneratingMeditation}
+              generatedMeditationScript={generatedMeditationScript}
+              savedMeditations={savedMeditations}
+              onGenerateMeditation={handleGenerateMeditation}
+              onPlayMeditation={() => {}}
+              onSaveMeditation={handleSaveMeditation}
+              onDeleteMeditation={(id) => setSavedMeditations(prev => prev.filter(m => m.id !== id))}
+            />
+          )}
+          {view === 'calendar' && <WellnessCalendar history={checkInHistory} wellnessPlan={wellnessPlan} insights="" isGenerating={false} onGenerateInsights={() => {}} initError={null} />}
+          {view === 'liveAvatar' && isPremium && <LiveAvatarView ai={aiRef.current} onSaveConversation={() => {}} />}
         </div>
       </main>
-      {isCheckInVisible && (
-        <DailyCheckInModal
-          onClose={() => setCheckInVisible(false)}
-          onSubmit={handleCheckInSubmit}
-        />
-      )}
-      {isCrisisModalVisible && (
-        <CrisisModal onClose={() => setCrisisModalVisible(false)} />
-      )}
-      {isSubscriptionModalVisible && (
-          <SubscriptionModal 
-            onClose={() => setSubscriptionModalVisible(false)} 
-            onSubscribe={() => {
-                subscribe();
-                setSubscriptionModalVisible(false);
-                showNotification('success', 'Welcome to Resilios Premium!');
-            }}
-          />
-      )}
+
+      {isCheckInVisible && <DailyCheckInModal onClose={() => setCheckInVisible(false)} onSubmit={(m, n) => { setLatestMood(m); setCheckInHistory(prev => [...prev, { mood: m, notes: n, date: new Date() }]); setCheckInVisible(false); }} />}
+      {isCrisisModalVisible && <CrisisModal onClose={() => setCrisisModalVisible(false)} />}
+      {isSubscriptionModalVisible && <SubscriptionModal onClose={() => setSubscriptionModalVisible(false)} onSubscribe={() => { subscribe(); setSubscriptionModalVisible(false); }} />}
     </div>
   );
 };
 
+// Fix: Export the App component as default to resolve the missing default export error in index.tsx
 export default App;

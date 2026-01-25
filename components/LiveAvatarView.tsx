@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { GoogleGenAI, LiveSession, LiveServerMessage, Modality } from "@google/genai";
+import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { LIVE_SYSTEM_PROMPT, displaySticker, STICKERS } from '../constants';
 import { createBlob, decode, decodeAudioData } from '../utils/audio';
 import { MicrophoneIcon, StopIcon } from './Icons';
@@ -16,7 +17,8 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ ai, onSaveConver
     const [statusText, setStatusText] = useState('Click below to start a conversation.');
     const [sticker, setSticker] = useState<string | null>(null);
 
-    const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
+    // Using any for the session object as specified types should not be imported directly
+    const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
@@ -178,8 +180,9 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ ai, onSaveConver
             conversationRef.current = [];
         };
 
+        // Fix: Establish Live API connection using the session promise pattern to avoid stale closures
         sessionPromiseRef.current = ai.live.connect({
-            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            model: 'gemini-2.5-flash-native-audio-preview-12-2025',
             callbacks: {
                 onopen: async () => {
                     setStatusText('Listening... say something!');
@@ -194,6 +197,7 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ ai, onSaveConver
                     scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
                         const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                         const pcmBlob = createBlob(inputData);
+                        // Fix: Solely rely on sessionPromise resolves to send real-time input
                         sessionPromiseRef.current?.then((session) => {
                             session.sendRealtimeInput({ media: pcmBlob });
                         });
@@ -244,6 +248,7 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ ai, onSaveConver
                         } else {
                            source.connect(outputAudioContext.destination);
                         }
+                        // Fix: Scheduling each new audio chunk to start at tracked nextStartTime for smooth playback
                         source.start(nextStartTime);
                         nextStartTime += audioBuffer.duration;
                     }
@@ -258,6 +263,7 @@ export const LiveAvatarView: React.FC<LiveAvatarViewProps> = ({ ai, onSaveConver
                 },
             },
             config: {
+                // Fix: responseModalities must contain exactly one modality (AUDIO)
                 responseModalities: [Modality.AUDIO],
                 inputAudioTranscription: {},
                 outputAudioTranscription: {},
