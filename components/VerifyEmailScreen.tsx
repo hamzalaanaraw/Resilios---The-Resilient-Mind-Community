@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { IMAGES } from '../constants';
 
 export const VerifyEmailScreen: React.FC = () => {
-  const { user, sendVerificationEmail, mockVerifyEmail, logout } = useAuth();
+  const { user, sendVerificationEmail, logout } = useAuth();
   const [emailSent, setEmailSent] = useState(false);
 
   const handleResend = async () => {
@@ -34,18 +34,10 @@ export const VerifyEmailScreen: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-            {/* This button simulates the user clicking the link in their email */}
-            <button 
-                onClick={() => mockVerifyEmail()}
-                className="w-full py-3 px-6 bg-sky-600 text-white font-bold rounded-xl shadow-md hover:bg-sky-700 transition-transform transform active:scale-95"
-            >
-                Simulate Clicking Email Link
-            </button>
-
             <button 
                 onClick={handleResend}
                 disabled={emailSent}
-                className="text-sky-600 font-semibold hover:text-sky-800 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 px-6 bg-sky-600 text-white font-bold rounded-xl shadow-md hover:bg-sky-700 transition-transform transform active:scale-95 disabled:opacity-50"
             >
                 {emailSent ? "Email Sent!" : "Resend Verification Email"}
             </button>

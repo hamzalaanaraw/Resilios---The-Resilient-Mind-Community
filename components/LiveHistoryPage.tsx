@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { LiveConversation } from '../types';
 
@@ -27,8 +28,8 @@ const LiveHistoryItem: React.FC<{ conversation: LiveConversation }> = ({ convers
 
 export const LiveHistoryPage: React.FC<LiveHistoryPageProps> = ({ history }) => {
   return (
-    <div className="p-4 h-full">
-      <div className="max-w-4xl mx-auto">
+    <div className="p-4 h-full overflow-y-auto">
+      <div className="max-w-4xl mx-auto pb-20">
         <h2 className="text-3xl font-bold text-slate-800 mb-2">Voice Conversation History</h2>
         <p className="text-slate-600 mb-8">Review your past voice sessions to reflect on your journey.</p>
         

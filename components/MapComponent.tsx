@@ -34,12 +34,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({ onSearch, isLoading,
     };
     
     return (
-        <div className="p-4 h-full flex flex-col">
-            <div className="max-w-2xl mx-auto w-full">
+        <div className="p-4 h-full overflow-y-auto">
+            <div className="max-w-2xl mx-auto w-full pb-20">
                 <h2 className="text-3xl font-bold text-slate-800 mb-2">Find Local Support</h2>
                 <p className="text-slate-600 mb-6">Enter a search term to find mental wellness resources near you. This feature uses your location to provide accurate results.</p>
                 
-                <form onSubmit={handleSearch} className="flex gap-2 mb-8">
+                <form onSubmit={handleSearch} className="flex gap-2 mb-8 sticky top-0 bg-slate-50 py-2 z-10">
                     <input
                         type="text"
                         value={query}

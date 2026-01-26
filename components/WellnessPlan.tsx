@@ -1,14 +1,16 @@
 
-
 import React, { useState } from 'react';
 import { WellnessPlanData, WellnessPlanSection, SavedMeditation, WellnessPlanEntry } from '../types';
 import { AIGuidedMeditation } from './AIGuidedMeditation';
-import { ClockIcon, RestoreIcon, SaveIcon, WandSparklesIcon } from './Icons';
+import { ClockIcon, RestoreIcon, SaveIcon, WandSparklesIcon, DocumentTextIcon, SparklesIcon, BrainIcon, SearchIcon, MapIcon } from './Icons';
 
 type PlanKey = keyof WellnessPlanData;
 
 interface WellnessPlanProps {
   plan: WellnessPlanData;
+  synthesis?: string;
+  isSynthesizing?: boolean;
+  onSynthesize?: () => void;
   onPlanChange: (newPlan: WellnessPlanData) => void;
   onGeneratePrompts: () => Promise<void>;
   onSaveEntry: (key: PlanKey) => void;
@@ -57,6 +59,128 @@ const HistoryItem: React.FC<{ entry: WellnessPlanEntry; onRestore: (content: str
         <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap font-mono text-xs md:text-sm">{entry.content}</p>
     </div>
 );
+
+const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+    const renderLine = (line: string, index: number) => {
+        const bolded = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        if (line.startsWith('### ')) {
+            return <h3 key={index} className="text-lg font-bold text-slate-800 mt-4 mb-2" dangerouslySetInnerHTML={{ __html: bolded.substring(4) }} />;
+        }
+        if (line.startsWith('# ') || line.startsWith('## ')) {
+            return <h2 key={index} className="text-xl font-black text-slate-900 mt-6 mb-3 tracking-tight border-b border-slate-100 pb-2" dangerouslySetInnerHTML={{ __html: bolded.replace(/^#+ /, '') }} />;
+        }
+        if (line.startsWith('* ') || line.startsWith('- ')) {
+            return <li key={index} className="ml-4 list-disc text-slate-700 mb-1" dangerouslySetInnerHTML={{ __html: bolded.substring(2) }} />;
+        }
+        return <p key={index} className="text-slate-700 mb-2 leading-relaxed" dangerouslySetInnerHTML={{ __html: bolded }} />;
+    };
+
+    const lines = content.split('\n');
+    return <div className="prose prose-sm max-w-none">{lines.map((line, idx) => line.trim() ? renderLine(line, idx) : <br key={idx} />)}</div>;
+};
+
+const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; isSynthesizing: boolean; onSynthesize: () => void }> = ({ plan, synthesis, isSynthesizing, onSynthesize }) => {
+    const sections = Object.keys(plan) as PlanKey[];
+    const hasAnyContent = sections.some(key => plan[key].content.trim().length > 0);
+
+    return (
+        <div className="animate-view space-y-8 pb-12">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 overflow-hidden">
+                <div className="bg-slate-900 p-8 md:p-12 text-white relative">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/20 blur-[80px]"></div>
+                    <div className="relative z-10">
+                        <span className="inline-block px-3 py-1 bg-sky-500/20 text-sky-300 text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-4">Official Document</span>
+                        <h2 className="text-4xl md:text-5xl font-black tracking-tighter mb-4">My Stability Guide</h2>
+                        <p className="text-sky-100/60 max-w-xl font-medium leading-relaxed">
+                            This is your personal operating manual. It summarizes your strengths, triggers, and protocols.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="p-8 md:p-12">
+                    {/* Synthesis Card */}
+                    <div className="bg-sky-50 rounded-3xl p-6 md:p-10 border border-sky-100 shadow-sm mb-12 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <SparklesIcon className="w-32 h-32" />
+                        </div>
+                        <div className="relative z-10">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                                <div>
+                                    <h3 className="text-2xl font-black text-sky-900 tracking-tight flex items-center gap-3">
+                                        <SparklesIcon /> AI-Organized Plan
+                                    </h3>
+                                    <p className="text-sky-700/60 text-sm font-medium">Reorganize your raw entries into a cohesive manual.</p>
+                                </div>
+                                <button 
+                                    onClick={onSynthesize}
+                                    disabled={isSynthesizing || !hasAnyContent}
+                                    className="px-6 py-3 bg-sky-500 text-white font-black rounded-2xl shadow-lg shadow-sky-200 hover:bg-sky-600 active:scale-95 transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+                                >
+                                    {isSynthesizing ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Reorganizing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <WandSparklesIcon /> {synthesis ? 'Refresh Manual' : 'Synthesize My Guide'}
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            {synthesis ? (
+                                <div className="bg-white rounded-2xl p-6 md:p-10 border border-sky-100 shadow-inner">
+                                    <MarkdownRenderer content={synthesis} />
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 border-2 border-dashed border-sky-200 rounded-2xl bg-white/50">
+                                    <p className="text-sky-600 font-bold mb-1">Guide not yet synthesized.</p>
+                                    <p className="text-sky-400 text-xs">Click the button above to transform your entries into a clear plan.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
+                        <div className="h-px flex-1 bg-slate-100"></div>
+                        RAW SOURCE ENTRIES
+                        <div className="h-px flex-1 bg-slate-100"></div>
+                    </h4>
+
+                    <div className="space-y-12">
+                        {!hasAnyContent ? (
+                            <div className="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-100">
+                                    <DocumentTextIcon />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-800 mb-2">Your source entries are empty.</h3>
+                                <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed font-medium">Switch back to "Build Mode" to start mapping your wellness strategy.</p>
+                            </div>
+                        ) : (
+                            sections.filter(key => plan[key].content.trim().length > 0).map((key) => (
+                                <div key={key} className="relative pl-10 border-l-2 border-slate-100 pb-2 last:pb-0">
+                                    <div className="absolute -left-[11px] top-0 w-5 h-5 rounded-full bg-white border-4 border-sky-500 shadow-sm"></div>
+                                    <h3 className="text-xs font-black text-sky-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        {plan[key].title}
+                                    </h3>
+                                    <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 shadow-sm">
+                                        <MarkdownRenderer content={plan[key].content} />
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+                
+                <div className="bg-slate-50 p-8 text-center border-t border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Created with Resilios AI</p>
+                    <p className="text-[10px] text-slate-400">Remember: You are resilient. This guide is your strength made visible.</p>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const AccordionSection: React.FC<AccordionSectionProps> = ({ 
     section, 
@@ -220,8 +344,9 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
 };
 
 export const WellnessPlan: React.FC<WellnessPlanProps> = (props) => {
-  const { plan, onPlanChange, onGeneratePrompts, onSaveEntry, isGeneratingPrompts, initError, ...meditationProps } = props;
+  const { plan, synthesis = "", isSynthesizing = false, onSynthesize = () => {}, onPlanChange, onGeneratePrompts, onSaveEntry, isGeneratingPrompts, initError, ...meditationProps } = props;
   const [openSection, setOpenSection] = useState<PlanKey | null>('toolbox');
+  const [viewMode, setViewMode] = useState<'build' | 'manual'>('build');
 
   const handleToggle = (key: PlanKey) => {
     setOpenSection(openSection === key ? null : key);
@@ -239,35 +364,58 @@ export const WellnessPlan: React.FC<WellnessPlanProps> = (props) => {
   };
 
   return (
-    <div className="h-full bg-slate-50/50">
-      <div className="max-w-4xl mx-auto p-4 md:p-8 pb-20">
-        <div className="text-center mb-12">
-            <span className="inline-block px-3 py-1 bg-sky-100 text-sky-700 text-xs font-bold rounded-full uppercase tracking-widest mb-3">Operating Manual</span>
+    <div className="h-full w-full bg-slate-50/50 overflow-y-auto">
+      <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24">
+        <div className="text-center mb-8">
+            <span className="inline-block px-3 py-1 bg-sky-100 text-sky-700 text-xs font-bold rounded-full uppercase tracking-widest mb-3">Stability Framework</span>
             <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">Your Mental Wellness Plan</h2>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-                This is your personal guide for navigation. Fill it out when you're feeling steady, so it's ready when you need support.
-            </p>
+            
+            <div className="flex justify-center mt-8">
+                <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex items-center">
+                    <button 
+                        onClick={() => setViewMode('build')}
+                        className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${viewMode === 'build' ? 'bg-sky-500 text-white shadow-lg shadow-sky-100' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        <WandSparklesIcon /> Build Mode
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('manual')}
+                        className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${viewMode === 'manual' ? 'bg-sky-500 text-white shadow-lg shadow-sky-100' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        <DocumentTextIcon /> View Manual
+                    </button>
+                </div>
+            </div>
         </div>
         
-        <div className="space-y-6">
-            {(Object.keys(plan) as PlanKey[]).map((key) => (
-            <AccordionSection
-                key={key}
-                sectionKey={key}
-                section={plan[key]}
-                isOpen={openSection === key}
-                onToggle={() => handleToggle(key)}
-                onContentChange={(content) => handleContentChange(key, content)}
-                showGenerateButton={key === 'journalPrompts'}
-                onGenerateClick={onGeneratePrompts}
-                onSaveEntry={() => onSaveEntry(key)}
-                isGenerating={isGeneratingPrompts}
-                initError={initError}
-            >
-                {key === 'toolbox' && <AIGuidedMeditation {...meditationProps} initError={initError} />}
-            </AccordionSection>
-            ))}
-        </div>
+        {viewMode === 'build' ? (
+            <div className="space-y-6 animate-view">
+                <div className="bg-sky-50 border border-sky-100 p-6 rounded-3xl mb-8">
+                    <p className="text-sm text-sky-800 font-medium leading-relaxed">
+                        Fill out each section below at your own pace. Click <strong>Save Version</strong> to create a checkpoint. You can view your consolidated guide anytime in <strong>Manual Mode</strong>.
+                    </p>
+                </div>
+                {(Object.keys(plan) as PlanKey[]).map((key) => (
+                <AccordionSection
+                    key={key}
+                    sectionKey={key}
+                    section={plan[key]}
+                    isOpen={openSection === key}
+                    onToggle={() => handleToggle(key)}
+                    onContentChange={(content) => handleContentChange(key, content)}
+                    showGenerateButton={key === 'journalPrompts'}
+                    onGenerateClick={onGeneratePrompts}
+                    onSaveEntry={() => onSaveEntry(key)}
+                    isGenerating={isGeneratingPrompts}
+                    initError={initError}
+                >
+                    {key === 'toolbox' && <AIGuidedMeditation {...meditationProps} initError={initError} />}
+                </AccordionSection>
+                ))}
+            </div>
+        ) : (
+            <WellnessManualView plan={plan} synthesis={synthesis} isSynthesizing={isSynthesizing} onSynthesize={onSynthesize} />
+        )}
       </div>
     </div>
   );

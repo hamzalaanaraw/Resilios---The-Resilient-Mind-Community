@@ -1,9 +1,10 @@
+
 import React from 'react';
 
 export const MissionPage: React.FC = () => {
   return (
-    <div className="p-4 h-full">
-      <div className="max-w-4xl mx-auto">
+    <div className="p-4 h-full overflow-y-auto">
+      <div className="max-w-4xl mx-auto pb-20">
         <h2 className="text-3xl font-bold text-slate-800 mb-4">Our Mission: The Heart Behind Resilios</h2>
         <div className="space-y-4 text-slate-700 text-lg leading-relaxed">
             <p>

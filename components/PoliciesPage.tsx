@@ -1,9 +1,10 @@
+
 import React from 'react';
 
 export const PoliciesPage: React.FC = () => {
   return (
-    <div className="p-4 h-full">
-      <div className="max-w-4xl mx-auto">
+    <div className="p-4 h-full overflow-y-auto">
+      <div className="max-w-4xl mx-auto pb-20">
         <h2 className="text-3xl font-bold text-slate-800 mb-4">Trust & Safety</h2>
         <div className="bg-amber-50 border-l-4 border-amber-400 p-4 my-6">
             <p className="font-bold text-amber-800">Disclaimer</p>

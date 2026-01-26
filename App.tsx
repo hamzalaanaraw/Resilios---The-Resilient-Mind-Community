@@ -1,7 +1,6 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, updateDoc, onSnapshot, collection, query, orderBy, limit, addDoc, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase/config";
 import { Header } from './components/Header';
 import { ChatWindow } from './components/ChatWindow';
@@ -9,8 +8,8 @@ import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
 import { DailyFocus } from './components/DailyFocus';
-import { Message, WellnessPlanData, View, Attachment, GroundingChunk, CheckInData, LiveConversation, SavedMeditation, Notification, NotificationType } from './types';
-import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, STICKERS, displaySticker } from './constants';
+import { Message, WellnessPlanData, View, Attachment, CheckInData, LiveConversation, SavedMeditation, Notification, WellnessPlanEntry } from './types';
+import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, SYSTEM_PROMPT } from './constants';
 import { Nav } from './components/Nav';
 import { useAuth } from './contexts/AuthContext';
 import { AuthScreen } from './components/AuthScreen';
@@ -21,11 +20,15 @@ import { LiveHistoryPage } from './components/LiveHistoryPage';
 import { LandingPage } from './components/LandingPage';
 import { NotificationToast } from './components/NotificationToast';
 import { VerifyEmailScreen } from './components/VerifyEmailScreen';
+import { MissionPage } from './components/MissionPage';
+import { ContactPage } from './components/ContactPage';
+import { PoliciesPage } from './components/PoliciesPage';
+import { MapComponent } from './components/MapComponent';
 
 const DAILY_LIMIT = 100;
 
 const App: React.FC = () => {
-  const { user, logout, isPremium, subscribe } = useAuth();
+  const { user, logout, isPremium, hasPremiumAccess, subscribe } = useAuth();
   const [view, setView] = useState<View>('chat');
   const [showLandingPage, setShowLandingPage] = useState(true);
 
@@ -44,15 +47,19 @@ const App: React.FC = () => {
   const [initError, setInitError] = useState<string | null>(null);
   const [isNavOpen, setIsNavOpen] = useState(false);
 
-  // States for WellnessPlan components
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
   const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [planSynthesis, setPlanSynthesis] = useState<string>("");
   const [generatedMeditationScript, setGeneratedMeditationScript] = useState("");
   const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>([]);
   
+  const [mapResults, setMapResults] = useState<any[]>([]);
+  const [isSearchingMap, setIsSearchingMap] = useState(false);
+  const [userLocation, setUserLocation] = useState<{latitude: number; longitude: number} | null>(null);
+
   const aiRef = useRef<GoogleGenAI | null>(null);
 
-  // Initialize AI client using the provided environment variable
   useEffect(() => {
     if (process.env.API_KEY) {
       aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -64,10 +71,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     const userDocRef = doc(db, "users", user.uid);
-    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+    
+    const unsubUser = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.wellnessPlan) setWellnessPlan(data.wellnessPlan);
+        if (data.planSynthesis) setPlanSynthesis(data.planSynthesis);
         if (data.challenge && data.challenge.date === new Date().toDateString()) {
             setDailyChallenge({ text: data.challenge.text, completed: data.challenge.completed });
         }
@@ -78,35 +87,54 @@ const App: React.FC = () => {
         }
       }
     });
-    return () => unsubscribe();
+
+    const checkinsRef = collection(db, "users", user.uid, "checkins");
+    const qCheckins = query(checkinsRef, orderBy("date", "desc"), limit(50));
+    const unsubCheckins = onSnapshot(qCheckins, (snap) => {
+        const history = snap.docs.map(d => {
+            const data = d.data();
+            return {
+                mood: data.mood,
+                notes: data.notes,
+                date: data.date.toDate ? data.date.toDate() : new Date(data.date)
+            } as CheckInData;
+        });
+        setCheckInHistory(history);
+        if (history.length > 0) setLatestMood(history[0].mood);
+    });
+
+    const meditationsRef = collection(db, "users", user.uid, "meditations");
+    const unsubMeditations = onSnapshot(meditationsRef, (snap) => {
+        setSavedMeditations(snap.docs.map(d => ({ id: d.id, ...d.data() } as SavedMeditation)));
+    });
+
+    const liveRef = collection(db, "users", user.uid, "voice_logs");
+    const qLive = query(liveRef, orderBy("timestamp", "desc"), limit(20));
+    const unsubLive = onSnapshot(qLive, (snap) => {
+        setLiveHistory(snap.docs.map(d => {
+            const data = d.data();
+            return {
+                id: d.id,
+                timestamp: data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp),
+                transcript: data.transcript
+            } as LiveConversation;
+        }));
+    });
+
+    return () => {
+      unsubUser();
+      unsubCheckins();
+      unsubMeditations();
+      unsubLive();
+    };
   }, [user]);
 
-  const generateDailyChallenge = async () => {
-    if (!aiRef.current || !user) return;
-    try {
-        const result = await aiRef.current.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: { parts: [{ text: `Based on this Wellness Plan: ${JSON.stringify(wellnessPlan)}, suggest one VERY SMALL (micro-step) daily resilience task (max 10 words). Focus on stability.` }] }
-        });
-        // Accessing .text property as per @google/genai guidelines
-        const text = result.text?.trim().replace(/"/g, '') || '';
-        const userDocRef = doc(db, "users", user.uid);
-        await updateDoc(userDocRef, { 
-            challenge: { text, completed: false, date: new Date().toDateString() } 
-        });
-    } catch (e) { console.error(e); }
-  };
-
-  useEffect(() => {
-      if (user && !dailyChallenge.text) {
-          generateDailyChallenge();
-      }
-  }, [user, dailyChallenge.text]);
-
-  const toggleChallenge = async () => {
-    if (!user) return;
-    const userDocRef = doc(db, "users", user.uid);
-    await updateDoc(userDocRef, { "challenge.completed": !dailyChallenge.completed });
+  const handleViewChange = (newView: View) => {
+    if (newView === 'liveAvatar' && !hasPremiumAccess) {
+      setSubscriptionModalVisible(true);
+      return;
+    }
+    setView(newView);
   };
 
   const handleSendMessage = useCallback(async (text: string, options: { attachment?: Attachment }) => {
@@ -115,7 +143,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!isPremium && usage.count >= DAILY_LIMIT) {
+    if (!hasPremiumAccess && usage.count >= DAILY_LIMIT) {
       setSubscriptionModalVisible(true);
       return;
     }
@@ -132,9 +160,17 @@ const App: React.FC = () => {
     try {
       if (!aiRef.current) throw new Error("AI not ready");
 
-      const parts: any[] = [{ text: `CONTEXT: ${JSON.stringify(wellnessPlan)}\nMOOD: ${latestMood}\nCHALLENGE_STATUS: ${dailyChallenge.completed ? 'Done' : 'Pending'}\nUSER: ${text}` }];
+      const contextPrefix = `CONTEXT: ${JSON.stringify(wellnessPlan)}\nMOOD: ${latestMood}\nCHALLENGE_STATUS: ${dailyChallenge.completed ? 'Done' : 'Pending'}`;
+      const promptParts: any[] = [];
+      
+      if (text.trim()) {
+        promptParts.push({ text: `${contextPrefix}\nUSER_MESSAGE: ${text}` });
+      } else {
+        promptParts.push({ text: `${contextPrefix}\nUSER_SENT_ATTACHMENT_ONLY` });
+      }
+
       if (options.attachment) {
-        parts.push({
+        promptParts.push({
           inlineData: {
             data: options.attachment.data,
             mimeType: options.attachment.mimeType
@@ -142,36 +178,112 @@ const App: React.FC = () => {
         });
       }
 
+      const modelToUse = 'gemini-3-flash-preview';
+
       const result = await aiRef.current.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: { parts }
+        model: modelToUse,
+        contents: { parts: promptParts },
+        config: { systemInstruction: SYSTEM_PROMPT }
       });
 
-      // result.text is a property, not a method
       const modelMsg: Message = { id: crypto.randomUUID(), role: 'model', text: result.text || '', timestamp: new Date() };
       setAllMessages(prev => [...prev, modelMsg]);
     } catch (e) {
-      setNotification({ id: 'err', type: 'error', message: "AI connection lost." });
+      setNotification({ id: 'err', type: 'error', message: "I couldn't process that message. Please try again." });
     } finally {
       setIsLoading(false);
     }
-  }, [isPremium, usage.count, wellnessPlan, user, latestMood, dailyChallenge.completed]);
+  }, [hasPremiumAccess, usage.count, wellnessPlan, user, latestMood, dailyChallenge.completed]);
 
-  // Wellness Plan Handlers
-  const handleGeneratePrompts = async () => {
+  const handleMapSearch = async (query: string) => {
     if (!aiRef.current) return;
+    setIsSearchingMap(true);
+    try {
+      let lat = 37.78193; 
+      let lng = -122.40476;
+      if ("geolocation" in navigator) {
+          const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
+          lat = pos.coords.latitude; lng = pos.coords.longitude;
+          setUserLocation({ latitude: lat, longitude: lng });
+      }
+      const response = await aiRef.current.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `Find ${query} near me. provide a list with names and Google Maps links.`,
+        config: { tools: [{googleMaps: {}}], toolConfig: { retrievalConfig: { latLng: { latitude: lat, longitude: lng } } } },
+      });
+      setMapResults(response.candidates?.[0]?.groundingMetadata?.groundingChunks || []);
+    } catch (e) {
+      setNotification({ id: 'map-err', type: 'error', message: "Resource search failed." });
+    } finally {
+      setIsSearchingMap(false);
+    }
+  };
+
+  const handleCheckInSubmit = async (mood: number, notes: string) => {
+    if (!user) return;
+    const checkinsRef = collection(db, "users", user.uid, "checkins");
+    await addDoc(checkinsRef, { mood, notes, date: new Date() });
+    setCheckInVisible(false);
+    setNotification({ id: 'checkin', type: 'success', message: "Mood logged successfully." });
+  };
+
+  const handleSaveMeditation = async (script: string) => {
+    if (!user) return;
+    const meditationsRef = collection(db, "users", user.uid, "meditations");
+    await addDoc(meditationsRef, {
+      name: `Meditation ${new Date().toLocaleDateString()}`,
+      script,
+      createdAt: new Date().toISOString()
+    });
+    setGeneratedMeditationScript("");
+    setNotification({ id: 'saved', type: 'success', message: "Meditation saved to favorites!" });
+  };
+
+  const handleDeleteMeditation = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, "users", user.uid, "meditations", id));
+  };
+
+  const handleSaveLiveConversation = async (transcript: any[]) => {
+      if (!user || transcript.length === 0) return;
+      const liveRef = collection(db, "users", user.uid, "voice_logs");
+      await addDoc(liveRef, { transcript, timestamp: new Date() });
+  };
+
+  const handleSynthesizePlan = async () => {
+    if (!aiRef.current || !user) return;
+    setIsSynthesizing(true);
+    try {
+      const result = await aiRef.current.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: { parts: [{ text: `Based on this raw wellness data, create a cohesive, supportive "Stability Guide" in Markdown format. Use headers, bullet points, and an encouraging tone.\n\nDATA: ${JSON.stringify(wellnessPlan)}` }] }
+      });
+      const synthesis = result.text || '';
+      setPlanSynthesis(synthesis);
+      await updateDoc(doc(db, "users", user.uid), { planSynthesis: synthesis });
+      setNotification({ id: 'synth', type: 'success', message: "Guide refreshed successfully." });
+    } catch (e) {
+      setNotification({ id: 'synth-err', type: 'error', message: "Failed to synthesize guide." });
+    } finally {
+      setIsSynthesizing(false);
+    }
+  };
+
+  const handleGeneratePrompts = async () => {
+    if (!aiRef.current || !user) return;
     setIsGeneratingPrompts(true);
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Based on my current wellness plan: ${JSON.stringify(wellnessPlan)}, generate 5 personalized deep reflection journal prompts.`
+        contents: { parts: [{ text: `Generate 3 personalized, deep journal prompts based on this wellness plan: ${JSON.stringify(wellnessPlan)}` }] }
       });
-      setWellnessPlan(prev => ({
-        ...prev,
-        journalPrompts: { ...prev.journalPrompts, content: result.text || '' }
-      }));
+      const content = result.text || '';
+      const newPlan = { ...wellnessPlan, journalPrompts: { ...wellnessPlan.journalPrompts, content } };
+      setWellnessPlan(newPlan);
+      await updateDoc(doc(db, "users", user.uid), { wellnessPlan: newPlan });
+      setNotification({ id: 'prompts', type: 'success', message: "Journal prompts updated." });
     } catch (e) {
-      setNotification({ id: 'err', type: 'error', message: "Failed to generate prompts." });
+      setNotification({ id: 'prompt-err', type: 'error', message: "Failed to generate prompts." });
     } finally {
       setIsGeneratingPrompts(false);
     }
@@ -180,46 +292,39 @@ const App: React.FC = () => {
   const handleSaveEntry = async (key: keyof WellnessPlanData) => {
     if (!user) return;
     const section = wellnessPlan[key];
-    const newEntry = {
+    if (!section.content.trim()) return;
+
+    const newEntry: WellnessPlanEntry = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       content: section.content
     };
-    const updatedHistory = [newEntry, ...(section.history || [])];
-    const updatedPlan = {
+
+    const updatedHistory = [newEntry, ...(section.history || [])].slice(0, 10);
+    const newPlan = {
       ...wellnessPlan,
       [key]: { ...section, history: updatedHistory }
     };
-    setWellnessPlan(updatedPlan);
-    const userDocRef = doc(db, "users", user.uid);
-    await updateDoc(userDocRef, { wellnessPlan: updatedPlan });
+    
+    setWellnessPlan(newPlan);
+    await updateDoc(doc(db, "users", user.uid), { wellnessPlan: newPlan });
+    setNotification({ id: 'save-entry', type: 'success', message: `${section.title} version saved.` });
   };
 
   const handleGenerateMeditation = async () => {
-    if (!aiRef.current) return;
+    if (!aiRef.current || !user) return;
     setIsGeneratingMeditation(true);
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: "Write a short, 3-minute guided meditation script focusing on resilience and grounding. Keep it peaceful and slow-paced."
+        contents: { parts: [{ text: `Create a short (2-minute read) guided meditation script for someone with a mood of ${latestMood || 5}/10. Focus on grounding and safety.` }] }
       });
       setGeneratedMeditationScript(result.text || '');
     } catch (e) {
-      setNotification({ id: 'err', type: 'error', message: "Failed to generate meditation." });
+      setNotification({ id: 'med-err', type: 'error', message: "Failed to generate meditation." });
     } finally {
       setIsGeneratingMeditation(false);
     }
-  };
-
-  const handleSaveMeditation = (script: string) => {
-    const newMeditation: SavedMeditation = {
-      id: crypto.randomUUID(),
-      name: `Meditation ${new Date().toLocaleDateString()}`,
-      script
-    };
-    setSavedMeditations(prev => [...prev, newMeditation]);
-    setGeneratedMeditationScript("");
-    setNotification({ id: 'saved', type: 'success', message: "Meditation saved to favorites!" });
   };
 
   if (!user) return showLandingPage ? <LandingPage onGetStarted={() => setShowLandingPage(false)} onLogin={() => setShowLandingPage(false)} /> : <AuthScreen onBack={() => setShowLandingPage(true)} />;
@@ -231,54 +336,47 @@ const App: React.FC = () => {
       <NotificationToast notification={notification} onClose={() => setNotification(null)} />
 
       <main className="flex-1 flex overflow-hidden">
-        <Nav activeView={view} setView={setView} onCheckInClick={() => setCheckInVisible(true)} onLogout={() => { logout(); setShowLandingPage(true); }} onGoPremium={() => setSubscriptionModalVisible(true)} isPremium={isPremium} latestMood={latestMood} isNavOpen={isNavOpen} onClose={() => setIsNavOpen(false)} />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {view === 'chat' && (
-            <>
-              <DailyFocus challenge={dailyChallenge.text} isCompleted={dailyChallenge.completed} onToggle={toggleChallenge} />
-              <ChatWindow 
-                messages={allMessages} 
-                onSendMessage={handleSendMessage} 
-                isLoading={isLoading} 
-                onTextToSpeech={() => {}} 
-                usageCount={usage.count} 
-                dailyLimit={DAILY_LIMIT} 
-                isPremium={isPremium} 
-                latestMood={latestMood} 
-                initError={initError} 
-                onLoadMore={() => {}} 
-                hasMore={false} 
-              />
-            </>
-          )}
-          {view === 'plan' && (
-            <WellnessPlan 
-              plan={wellnessPlan} 
-              onPlanChange={(p) => setWellnessPlan(p)} 
-              onGeneratePrompts={handleGeneratePrompts}
-              onSaveEntry={handleSaveEntry}
-              isGeneratingPrompts={isGeneratingPrompts}
-              initError={initError}
-              isGeneratingMeditation={isGeneratingMeditation}
-              generatedMeditationScript={generatedMeditationScript}
-              savedMeditations={savedMeditations}
-              onGenerateMeditation={handleGenerateMeditation}
-              onPlayMeditation={() => {}}
-              onSaveMeditation={handleSaveMeditation}
-              onDeleteMeditation={(id) => setSavedMeditations(prev => prev.filter(m => m.id !== id))}
-            />
-          )}
-          {view === 'calendar' && <WellnessCalendar history={checkInHistory} wellnessPlan={wellnessPlan} insights="" isGenerating={false} onGenerateInsights={() => {}} initError={null} />}
-          {view === 'liveAvatar' && isPremium && <LiveAvatarView ai={aiRef.current} onSaveConversation={() => {}} />}
+        <Nav 
+          activeView={view} 
+          setView={handleViewChange} 
+          onCheckInClick={() => setCheckInVisible(true)} 
+          onLogout={() => { logout(); setShowLandingPage(true); }} 
+          onGoPremium={() => setSubscriptionModalVisible(true)} 
+          isPremium={hasPremiumAccess} 
+          latestMood={latestMood} 
+          isNavOpen={isNavOpen} 
+          onClose={() => setIsNavOpen(false)} 
+        />
+        <div className="flex-1 flex flex-col min-h-0 relative bg-slate-50">
+          <div key={view} className="absolute inset-0 flex flex-col animate-view overflow-hidden">
+            {view === 'chat' && (
+              <div className="flex flex-col h-full overflow-hidden">
+                <DailyFocus challenge={dailyChallenge.text} isCompleted={dailyChallenge.completed} onToggle={async () => {
+                    const userDocRef = doc(db, "users", user.uid);
+                    await updateDoc(userDocRef, { "challenge.completed": !dailyChallenge.completed });
+                }} />
+                <ChatWindow messages={allMessages} onSendMessage={handleSendMessage} isLoading={isLoading} onTextToSpeech={() => {}} usageCount={usage.count} dailyLimit={DAILY_LIMIT} isPremium={hasPremiumAccess} onUpgrade={() => setSubscriptionModalVisible(true)} latestMood={latestMood} initError={initError} onLoadMore={() => {}} hasMore={false} />
+              </div>
+            )}
+            {view === 'plan' && (
+              <WellnessPlan plan={wellnessPlan} synthesis={planSynthesis} isSynthesizing={isSynthesizing} onSynthesize={handleSynthesizePlan} onPlanChange={async (p) => { setWellnessPlan(p); await updateDoc(doc(db, "users", user.uid), { wellnessPlan: p }); }} onGeneratePrompts={handleGeneratePrompts} onSaveEntry={handleSaveEntry} isGeneratingPrompts={isGeneratingPrompts} initError={initError} isGeneratingMeditation={isGeneratingMeditation} generatedMeditationScript={generatedMeditationScript} savedMeditations={savedMeditations} onGenerateMeditation={handleGenerateMeditation} onPlayMeditation={() => {}} onSaveMeditation={handleSaveMeditation} onDeleteMeditation={handleDeleteMeditation} />
+            )}
+            {view === 'calendar' && <WellnessCalendar history={checkInHistory} wellnessPlan={wellnessPlan} insights="" isGenerating={false} onGenerateInsights={() => {}} initError={null} />}
+            {view === 'map' && <MapComponent onSearch={handleMapSearch} isLoading={isSearchingMap} results={mapResults} userLocation={userLocation} initError={initError} />}
+            {view === 'liveAvatar' && hasPremiumAccess && <LiveAvatarView ai={aiRef.current} onSaveConversation={handleSaveLiveConversation} />}
+            {view === 'liveHistory' && <LiveHistoryPage history={liveHistory} />}
+            {view === 'mission' && <MissionPage />}
+            {view === 'contact' && <ContactPage />}
+            {view === 'policies' && <PoliciesPage />}
+          </div>
         </div>
       </main>
 
-      {isCheckInVisible && <DailyCheckInModal onClose={() => setCheckInVisible(false)} onSubmit={(m, n) => { setLatestMood(m); setCheckInHistory(prev => [...prev, { mood: m, notes: n, date: new Date() }]); setCheckInVisible(false); }} />}
+      {isCheckInVisible && <DailyCheckInModal onClose={() => setCheckInVisible(false)} onSubmit={handleCheckInSubmit} />}
       {isCrisisModalVisible && <CrisisModal onClose={() => setCrisisModalVisible(false)} />}
       {isSubscriptionModalVisible && <SubscriptionModal onClose={() => setSubscriptionModalVisible(false)} onSubscribe={() => { subscribe(); setSubscriptionModalVisible(false); }} />}
     </div>
   );
 };
 
-// Fix: Export the App component as default to resolve the missing default export error in index.tsx
 export default App;
