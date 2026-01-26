@@ -52,7 +52,9 @@ const App: React.FC = () => {
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
   const [isGeneratingMeditation, setIsGeneratingMeditation] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [isGeneratingCalendarInsights, setIsGeneratingCalendarInsights] = useState(false);
   const [planSynthesis, setPlanSynthesis] = useState<string>("");
+  const [calendarInsights, setCalendarInsights] = useState<string>("");
   const [generatedMeditationScript, setGeneratedMeditationScript] = useState("");
   const [savedMeditations, setSavedMeditations] = useState<SavedMeditation[]>([]);
   
@@ -79,6 +81,7 @@ const App: React.FC = () => {
         const data = docSnap.data();
         if (data.wellnessPlan) setWellnessPlan(data.wellnessPlan);
         if (data.planSynthesis) setPlanSynthesis(data.planSynthesis);
+        if (data.calendarInsights) setCalendarInsights(data.calendarInsights);
         if (data.challenge && data.challenge.date === new Date().toDateString()) {
             setDailyChallenge({ text: data.challenge.text, completed: data.challenge.completed });
         }
@@ -145,14 +148,6 @@ const App: React.FC = () => {
     };
   }, [user]);
 
-  const handleViewChange = (newView: View) => {
-    if (newView === 'liveAvatar' && !hasPremiumAccess) {
-      setSubscriptionModalVisible(true);
-      return;
-    }
-    setView(newView);
-  };
-
   const handleSendMessage = useCallback(async (text: string, options: { attachment?: Attachment }) => {
     if (CRISIS_TRIGGER_PHRASES.some(p => text.toLowerCase().includes(p))) {
       setCrisisModalVisible(true);
@@ -211,6 +206,81 @@ const App: React.FC = () => {
     }
   }, [hasPremiumAccess, usage.count, wellnessPlan, user, latestMood, dailyChallenge.completed]);
 
+  const handleCheckInSubmit = async (mood: number, notes: string) => {
+    if (!user || !aiRef.current) return;
+    
+    setCheckInVisible(false);
+    setIsLoading(true);
+    setLatestMood(mood);
+
+    try {
+      const checkinsRef = collection(db, "users", user.uid, "checkins");
+      await addDoc(checkinsRef, { mood, notes, date: new Date() });
+
+      const userMsg: Message = { 
+        id: crypto.randomUUID(), 
+        role: 'user', 
+        text: `Mood log: ${mood}/10. ${notes ? `Note: ${notes}` : ""}`, 
+        timestamp: new Date() 
+      };
+      setAllMessages(prev => [...prev, userMsg]);
+
+      const result = await aiRef.current.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `USER_CHECK_IN: Mood ${mood}/10, Notes: ${notes || "None"}\n\nValidate the user as a peer and suggest one small micro-step based on their state.`,
+        config: { systemInstruction: SYSTEM_PROMPT }
+      });
+
+      const modelMsg: Message = { 
+        id: crypto.randomUUID(), 
+        role: 'model', 
+        text: result.text || 'Thank you for checking in.', 
+        timestamp: new Date() 
+      };
+      setAllMessages(prev => [...prev, modelMsg]);
+      
+      setView('chat');
+      setNotification({ id: 'checkin', type: 'success', message: "Mood logged." });
+
+    } catch (e) {
+      setNotification({ id: 'checkin-err', type: 'error', message: "Couldn't generate response." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateCalendarInsights = async () => {
+    if (!aiRef.current || !user || checkInHistory.length < 3) {
+      setNotification({ id: 'insight-min', type: 'info', message: "You need at least 3 check-ins to unlock AI insights." });
+      return;
+    }
+    
+    setIsGeneratingCalendarInsights(true);
+    try {
+      // Analyze last 7 check-ins (or all if fewer)
+      const dataForAnalysis = checkInHistory.slice(0, 7).map(h => ({
+        mood: h.mood,
+        notes: h.notes,
+        date: h.date.toDateString()
+      }));
+
+      const result = await aiRef.current.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `MOOD_HISTORY: ${JSON.stringify(dataForAnalysis)}\nWELLNESS_PLAN: ${JSON.stringify(wellnessPlan)}\n\nAs Resilios, identify any subtle mood patterns (highs/lows/triggers). Cross-reference with their anchor points in the plan. Offer a "Resilience Theme" for their next 3 days. Use Markdown formatting.`,
+        config: { systemInstruction: SYSTEM_PROMPT }
+      });
+
+      const insights = result.text || '';
+      setCalendarInsights(insights);
+      await updateDoc(doc(db, "users", user.uid), { calendarInsights: insights });
+      setNotification({ id: 'insight-success', type: 'success', message: "Insights updated." });
+    } catch (e) {
+      setNotification({ id: 'insight-err', type: 'error', message: "Failed to generate patterns." });
+    } finally {
+      setIsGeneratingCalendarInsights(false);
+    }
+  };
+
   const handleMapSearch = async (searchQuery: string) => {
     if (!aiRef.current || !user) return;
     setIsSearchingMap(true);
@@ -229,36 +299,23 @@ const App: React.FC = () => {
       });
       const results = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       setMapResults(results);
-
-      // Save search to history if results found or as an attempt
-      const mapHistoryRef = collection(db, "users", user.uid, "map_searches");
-      await addDoc(mapHistoryRef, { query: searchQuery, timestamp: new Date() });
-
+      await addDoc(collection(db, "users", user.uid, "map_searches"), { query: searchQuery, timestamp: new Date() });
     } catch (e) {
-      setNotification({ id: 'map-err', type: 'error', message: "Resource search failed." });
+      setNotification({ id: 'map-err', type: 'error', message: "Search failed." });
     } finally {
       setIsSearchingMap(false);
     }
   };
 
-  const handleCheckInSubmit = async (mood: number, notes: string) => {
-    if (!user) return;
-    const checkinsRef = collection(db, "users", user.uid, "checkins");
-    await addDoc(checkinsRef, { mood, notes, date: new Date() });
-    setCheckInVisible(false);
-    setNotification({ id: 'checkin', type: 'success', message: "Mood logged successfully." });
-  };
-
   const handleSaveMeditation = async (script: string) => {
     if (!user) return;
-    const meditationsRef = collection(db, "users", user.uid, "meditations");
-    await addDoc(meditationsRef, {
+    await addDoc(collection(db, "users", user.uid, "meditations"), {
       name: `Meditation ${new Date().toLocaleDateString()}`,
       script,
       createdAt: new Date().toISOString()
     });
     setGeneratedMeditationScript("");
-    setNotification({ id: 'saved', type: 'success', message: "Meditation saved to favorites!" });
+    setNotification({ id: 'saved', type: 'success', message: "Meditation saved!" });
   };
 
   const handleDeleteMeditation = async (id: string) => {
@@ -268,8 +325,7 @@ const App: React.FC = () => {
 
   const handleSaveLiveConversation = async (transcript: any[]) => {
       if (!user || transcript.length === 0) return;
-      const liveRef = collection(db, "users", user.uid, "voice_logs");
-      await addDoc(liveRef, { transcript, timestamp: new Date() });
+      await addDoc(collection(db, "users", user.uid, "voice_logs"), { transcript, timestamp: new Date() });
   };
 
   const handleSynthesizePlan = async () => {
@@ -278,14 +334,13 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: `Based on this raw wellness data, create a cohesive, supportive "Stability Guide" in Markdown format. Use headers, bullet points, and an encouraging tone.\n\nDATA: ${JSON.stringify(wellnessPlan)}` }] }
+        contents: `Based on this data, create a cohesive "Stability Guide": ${JSON.stringify(wellnessPlan)}`
       });
       const synthesis = result.text || '';
       setPlanSynthesis(synthesis);
       await updateDoc(doc(db, "users", user.uid), { planSynthesis: synthesis });
-      setNotification({ id: 'synth', type: 'success', message: "Guide refreshed successfully." });
     } catch (e) {
-      setNotification({ id: 'synth-err', type: 'error', message: "Failed to synthesize guide." });
+      setNotification({ id: 'synth-err', type: 'error', message: "Synthesis failed." });
     } finally {
       setIsSynthesizing(false);
     }
@@ -297,13 +352,12 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: `Generate 3 personalized, deep journal prompts based on this wellness plan: ${JSON.stringify(wellnessPlan)}` }] }
+        contents: `Generate 3 personalized journal prompts for this plan: ${JSON.stringify(wellnessPlan)}`
       });
       const content = result.text || '';
       const newPlan = { ...wellnessPlan, journalPrompts: { ...wellnessPlan.journalPrompts, content } };
       setWellnessPlan(newPlan);
       await updateDoc(doc(db, "users", user.uid), { wellnessPlan: newPlan });
-      setNotification({ id: 'prompts', type: 'success', message: "Journal prompts updated." });
     } catch (e) {
       setNotification({ id: 'prompt-err', type: 'error', message: "Failed to generate prompts." });
     } finally {
@@ -314,23 +368,11 @@ const App: React.FC = () => {
   const handleSaveEntry = async (key: keyof WellnessPlanData) => {
     if (!user) return;
     const section = wellnessPlan[key];
-    if (!section.content.trim()) return;
-
-    const newEntry: WellnessPlanEntry = {
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      content: section.content
-    };
-
+    const newEntry: WellnessPlanEntry = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), content: section.content };
     const updatedHistory = [newEntry, ...(section.history || [])].slice(0, 10);
-    const newPlan = {
-      ...wellnessPlan,
-      [key]: { ...section, history: updatedHistory }
-    };
-    
+    const newPlan = { ...wellnessPlan, [key]: { ...section, history: updatedHistory } };
     setWellnessPlan(newPlan);
     await updateDoc(doc(db, "users", user.uid), { wellnessPlan: newPlan });
-    setNotification({ id: 'save-entry', type: 'success', message: `${section.title} version saved.` });
   };
 
   const handleGenerateMeditation = async () => {
@@ -339,7 +381,7 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: `Create a short (2-minute read) guided meditation script for someone with a mood of ${latestMood || 5}/10. Focus on grounding and safety.` }] }
+        contents: `Create a short meditation for a mood of ${latestMood || 5}/10.`
       });
       setGeneratedMeditationScript(result.text || '');
     } catch (e) {
@@ -358,24 +400,13 @@ const App: React.FC = () => {
       <NotificationToast notification={notification} onClose={() => setNotification(null)} />
 
       <main className="flex-1 flex overflow-hidden">
-        <Nav 
-          activeView={view} 
-          setView={handleViewChange} 
-          onCheckInClick={() => setCheckInVisible(true)} 
-          onLogout={() => { logout(); setShowLandingPage(true); }} 
-          onGoPremium={() => setSubscriptionModalVisible(true)} 
-          isPremium={hasPremiumAccess} 
-          latestMood={latestMood} 
-          isNavOpen={isNavOpen} 
-          onClose={() => setIsNavOpen(false)} 
-        />
+        <Nav activeView={view} setView={setView} onCheckInClick={() => setCheckInVisible(true)} onLogout={() => { logout(); setShowLandingPage(true); }} onGoPremium={() => setSubscriptionModalVisible(true)} isPremium={hasPremiumAccess} latestMood={latestMood} isNavOpen={isNavOpen} onClose={() => setIsNavOpen(false)} />
         <div className="flex-1 flex flex-col min-h-0 relative bg-slate-50">
           <div key={view} className="absolute inset-0 flex flex-col animate-view overflow-hidden">
             {view === 'chat' && (
               <div className="flex flex-col h-full overflow-hidden">
                 <DailyFocus challenge={dailyChallenge.text} isCompleted={dailyChallenge.completed} onToggle={async () => {
-                    const userDocRef = doc(db, "users", user.uid);
-                    await updateDoc(userDocRef, { "challenge.completed": !dailyChallenge.completed });
+                    await updateDoc(doc(db, "users", user.uid), { "challenge.completed": !dailyChallenge.completed });
                 }} />
                 <ChatWindow messages={allMessages} onSendMessage={handleSendMessage} isLoading={isLoading} onTextToSpeech={() => {}} usageCount={usage.count} dailyLimit={DAILY_LIMIT} isPremium={hasPremiumAccess} onUpgrade={() => setSubscriptionModalVisible(true)} latestMood={latestMood} initError={initError} onLoadMore={() => {}} hasMore={false} />
               </div>
@@ -383,7 +414,16 @@ const App: React.FC = () => {
             {view === 'plan' && (
               <WellnessPlan plan={wellnessPlan} synthesis={planSynthesis} isSynthesizing={isSynthesizing} onSynthesize={handleSynthesizePlan} onPlanChange={async (p) => { setWellnessPlan(p); await updateDoc(doc(db, "users", user.uid), { wellnessPlan: p }); }} onGeneratePrompts={handleGeneratePrompts} onSaveEntry={handleSaveEntry} isGeneratingPrompts={isGeneratingPrompts} initError={initError} isGeneratingMeditation={isGeneratingMeditation} generatedMeditationScript={generatedMeditationScript} savedMeditations={savedMeditations} onGenerateMeditation={handleGenerateMeditation} onPlayMeditation={() => {}} onSaveMeditation={handleSaveMeditation} onDeleteMeditation={handleDeleteMeditation} />
             )}
-            {view === 'calendar' && <WellnessCalendar history={checkInHistory} wellnessPlan={wellnessPlan} insights="" isGenerating={false} onGenerateInsights={() => {}} initError={null} />}
+            {view === 'calendar' && (
+              <WellnessCalendar 
+                history={checkInHistory} 
+                wellnessPlan={wellnessPlan} 
+                insights={calendarInsights} 
+                isGenerating={isGeneratingCalendarInsights} 
+                onGenerateInsights={handleGenerateCalendarInsights} 
+                initError={null} 
+              />
+            )}
             {view === 'map' && <MapComponent onSearch={handleMapSearch} isLoading={isSearchingMap} results={mapResults} history={mapSearchHistory} userLocation={userLocation} initError={initError} />}
             {view === 'liveAvatar' && hasPremiumAccess && <LiveAvatarView ai={aiRef.current} onSaveConversation={handleSaveLiveConversation} />}
             {view === 'liveHistory' && <LiveHistoryPage history={liveHistory} />}
