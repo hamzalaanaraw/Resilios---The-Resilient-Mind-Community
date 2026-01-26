@@ -1,5 +1,4 @@
 
-
 export type MessageRole = 'user' | 'model';
 
 export interface GroundingChunk {
@@ -74,6 +73,12 @@ export interface SavedMeditation {
   id: string;
   name: string;
   script: string;
+}
+
+export interface MapSearch {
+  id: string;
+  query: string;
+  timestamp: Date;
 }
 
 export type View = 'chat' | 'plan' | 'map' | 'liveAvatar' | 'calendar' | 'mission' | 'contact' | 'policies' | 'liveHistory';

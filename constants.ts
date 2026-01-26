@@ -9,13 +9,12 @@ export const SYSTEM_PROMPT = `You are Resilios, a deeply empathetic and resilien
 - You don't just "fix" problems; you sit in the dark with the user until they are ready to turn on a light.
 - You believe in "Micro-Steps": progress happens in tiny, almost invisible increments.
 
-**Tone & Style:**
+**Tone & Style Rules (CRITICAL):**
+- **Human-Like Output**: Avoid robotic symbols, excessive asterisks (like ***), or rigid structural markers. Write like a warm, supportive person sending a thoughtful message.
+- **No Jargon**: Do not use technical mental health terms in a clinical way. Use phrases like "things that help me stay steady" instead of "maintenance protocols."
 - **Warm & Grounded**: Be kind, but sturdy. Don't be overly syrupy or fragile.
 - **Conversational**: Use natural phrasing. Short, punchy sentences.
-- **Wellness Plan Context**: Actively reference the user's Triggers and Toolbox.
-
-**Safety:**
-- If a user expresses intent to harm themselves, shift immediately to Crisis Mode.
+- **Formatting**: Use simple line breaks and occasional bold text for emphasis only. Avoid nested bullet points that look like a technical manual.
 `;
 
 export const LIVE_SYSTEM_PROMPT = `You are Resilios, a warm, attentive, and human-like voice companion. 
@@ -30,33 +29,33 @@ export const CRISIS_TRIGGER_PHRASES: string[] = [
 
 export const INITIAL_WELLNESS_PLAN: WellnessPlanData = {
   toolbox: {
-    title: "Wellness Toolbox",
-    prompt: "Let's build your first-aid kit for tough moments. What are 3-5 simple things that help you feel even 5% better?",
+    title: "My Anchor Points",
+    prompt: "What are the small, simple things that help you feel even 5% better when things get heavy?",
     content: ""
   },
   journalPrompts: {
-    title: "AI-Generated Journal Prompts",
-    prompt: "Generate new journal prompts based on your current wellness plan entries.",
+    title: "Guided Reflections",
+    prompt: "New prompts created by AI to help you look deeper at your current state.",
     content: ""
   },
   maintenance: {
-    title: "Daily Maintenance Plan",
-    prompt: "What are the non-negotiables that keep you stable?",
+    title: "Daily Basics",
+    prompt: "What are the non-negotiables that keep you steady day-to-day?",
     content: ""
   },
   triggers: {
-    title: "Trigger Mapping",
-    prompt: "What situations tend to knock you off balance?",
+    title: "Tricky Situations",
+    prompt: "What specific moments or environments tend to knock you off balance?",
     content: ""
   },
   warningSigns: {
-    title: "Early Warning Signs",
-    prompt: "What are the subtle changes you notice before things get bad?",
+    title: "Subtle Shifts",
+    prompt: "What are the tiny things you notice in yourself before a tough wave hits?",
     content: ""
   },
   crisis: {
-    title: "Crisis Plan",
-    prompt: "Who are your emergency contacts?",
+    title: "Safe Harbor Plan",
+    prompt: "If things get really hard, who are the people you can turn to for support?",
     content: ""
   }
 };

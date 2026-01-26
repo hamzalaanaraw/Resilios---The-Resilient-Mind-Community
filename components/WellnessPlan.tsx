@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { WellnessPlanData, WellnessPlanSection, SavedMeditation, WellnessPlanEntry } from '../types';
 import { AIGuidedMeditation } from './AIGuidedMeditation';
-import { ClockIcon, RestoreIcon, SaveIcon, WandSparklesIcon, DocumentTextIcon, SparklesIcon, BrainIcon, SearchIcon, MapIcon } from './Icons';
+import { ClockIcon, RestoreIcon, SaveIcon, WandSparklesIcon, DocumentTextIcon, SparklesIcon } from './Icons';
 
 type PlanKey = keyof WellnessPlanData;
 
@@ -53,10 +53,10 @@ const HistoryItem: React.FC<{ entry: WellnessPlanEntry; onRestore: (content: str
                 title="Restore this version"
             >
                 <RestoreIcon />
-                <span className="ml-1">Restore</span>
+                <span className="ml-1">Bring Back</span>
             </button>
         </div>
-        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap font-mono text-xs md:text-sm">{entry.content}</p>
+        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">{entry.content}</p>
     </div>
 );
 
@@ -89,10 +89,10 @@ const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; 
                 <div className="bg-slate-900 p-8 md:p-12 text-white relative">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/20 blur-[80px]"></div>
                     <div className="relative z-10">
-                        <span className="inline-block px-3 py-1 bg-sky-500/20 text-sky-300 text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-4">Official Document</span>
+                        <span className="inline-block px-3 py-1 bg-sky-500/20 text-sky-300 text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-4">Your Private Guide</span>
                         <h2 className="text-4xl md:text-5xl font-black tracking-tighter mb-4">My Stability Guide</h2>
                         <p className="text-sky-100/60 max-w-xl font-medium leading-relaxed">
-                            This is your personal operating manual. It summarizes your strengths, triggers, and protocols.
+                            This is your personal operating manual. A place to store your strengths and reminders for when things feel difficult.
                         </p>
                     </div>
                 </div>
@@ -107,9 +107,9 @@ const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; 
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                                 <div>
                                     <h3 className="text-2xl font-black text-sky-900 tracking-tight flex items-center gap-3">
-                                        <SparklesIcon /> AI-Organized Plan
+                                        <SparklesIcon /> Deep Insight
                                     </h3>
-                                    <p className="text-sky-700/60 text-sm font-medium">Reorganize your raw entries into a cohesive manual.</p>
+                                    <p className="text-sky-700/60 text-sm font-medium">I can weave your personal thoughts into a single, cohesive story.</p>
                                 </div>
                                 <button 
                                     onClick={onSynthesize}
@@ -119,11 +119,11 @@ const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; 
                                     {isSynthesizing ? (
                                         <>
                                             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            Reorganizing...
+                                            Listening...
                                         </>
                                     ) : (
                                         <>
-                                            <WandSparklesIcon /> {synthesis ? 'Refresh Manual' : 'Synthesize My Guide'}
+                                            <WandSparklesIcon /> {synthesis ? 'Refresh My Story' : 'Weave My Guide'}
                                         </>
                                     )}
                                 </button>
@@ -135,8 +135,8 @@ const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; 
                                 </div>
                             ) : (
                                 <div className="text-center py-12 border-2 border-dashed border-sky-200 rounded-2xl bg-white/50">
-                                    <p className="text-sky-600 font-bold mb-1">Guide not yet synthesized.</p>
-                                    <p className="text-sky-400 text-xs">Click the button above to transform your entries into a clear plan.</p>
+                                    <p className="text-sky-600 font-bold mb-1">Your guide is waiting to be written.</p>
+                                    <p className="text-sky-400 text-xs text-center px-4">Tap the button above to let me analyze your notes and create a supportive path forward.</p>
                                 </div>
                             )}
                         </div>
@@ -144,7 +144,7 @@ const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; 
 
                     <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
                         <div className="h-px flex-1 bg-slate-100"></div>
-                        RAW SOURCE ENTRIES
+                        YOUR PERSONAL NOTES
                         <div className="h-px flex-1 bg-slate-100"></div>
                     </h4>
 
@@ -154,8 +154,8 @@ const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; 
                                 <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-100">
                                     <DocumentTextIcon />
                                 </div>
-                                <h3 className="text-xl font-black text-slate-800 mb-2">Your source entries are empty.</h3>
-                                <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed font-medium">Switch back to "Build Mode" to start mapping your wellness strategy.</p>
+                                <h3 className="text-xl font-black text-slate-800 mb-2">It's a blank canvas for now.</h3>
+                                <p className="text-slate-500 text-sm max-w-xs mx-auto leading-relaxed font-medium">Head back to "Writing Mode" to start capturing your anchors and reflections.</p>
                             </div>
                         ) : (
                             sections.filter(key => plan[key].content.trim().length > 0).map((key) => (
@@ -174,8 +174,8 @@ const WellnessManualView: React.FC<{ plan: WellnessPlanData; synthesis: string; 
                 </div>
                 
                 <div className="bg-slate-50 p-8 text-center border-t border-slate-100">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Created with Resilios AI</p>
-                    <p className="text-[10px] text-slate-400">Remember: You are resilient. This guide is your strength made visible.</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Created with empathy by Resilios</p>
+                    <p className="text-[10px] text-slate-400">This guide is a reminder that you are the expert of your own experience.</p>
                 </div>
             </div>
         </div>
@@ -218,7 +218,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
              <div className="text-left">
                 <h3 className="text-lg font-bold text-slate-800">{section.title}</h3>
                 <p className="text-xs text-slate-400 mt-0.5 font-medium">
-                    {section.content ? 'Content added' : 'Not started'} • {historyCount} saved version{historyCount !== 1 ? 's' : ''}
+                    {section.content ? 'In progress' : 'Ready for your thoughts'} • {historyCount} saved version{historyCount !== 1 ? 's' : ''}
                 </p>
              </div>
         </div>
@@ -245,12 +245,12 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
                                 {isGenerating ? (
                                     <>
                                         <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                        Generating Ideas...
+                                        Deep Thinking...
                                     </>
-                                ) : "✨ Generate Personalized Prompts"}
+                                ) : "✨ Create New Prompts"}
                             </button>
                             <p className="text-xs text-sky-600 mt-2 italic">
-                                AI will analyze your plan above to create custom prompts.
+                                I'll look at your plan above to find specific topics for you to explore.
                             </p>
                         </div>
                     )}
@@ -261,7 +261,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
           {/* Toolbar */}
           <div className="px-6 py-3 bg-white border-b border-slate-100 flex flex-wrap justify-between items-center gap-3 sticky top-0 z-10">
               <div className="flex items-center gap-2">
-                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Editor</span>
+                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Note Editor</span>
               </div>
               <div className="flex items-center gap-2">
                   <button
@@ -269,7 +269,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
                     className={`flex items-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${showHistory ? 'bg-slate-200 text-slate-800' : 'text-slate-500 hover:bg-slate-100'}`}
                   >
                       <ClockIcon />
-                      <span className="ml-1.5">History ({historyCount})</span>
+                      <span className="ml-1.5">View History</span>
                   </button>
                   
                   <div className="h-4 w-px bg-slate-200 mx-1"></div>
@@ -281,13 +281,13 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
                   >
                      {justSaved ? (
                          <>
-                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                            Saved!
+                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"></path></svg>
+                            Note Kept
                          </>
                      ) : (
                          <>
                             <SaveIcon />
-                            <span className="ml-1.5">Save Version</span>
+                            <span className="ml-1.5">Keep this Version</span>
                          </>
                      )}
                   </button>
@@ -300,7 +300,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
                 onChange={(e) => onContentChange(e.target.value)}
                 rows={10}
                 className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500 transition-all text-base text-slate-800 leading-relaxed resize-y placeholder-slate-400"
-                placeholder={showGenerateButton ? "Your journal prompts will appear here..." : "Start typing your plan here..."}
+                placeholder={showGenerateButton ? "Your journal prompts will appear here..." : "What's on your mind?..."}
             />
             
             {/* History Panel */}
@@ -308,7 +308,7 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
                 <div className="mt-6 border-t border-slate-200 pt-6 animate-fadeIn">
                     <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center">
                         <ClockIcon /> 
-                        <span className="ml-2">Previous Versions</span>
+                        <span className="ml-2">Previous Reflections</span>
                     </h4>
                     
                     {section.history && section.history.length > 0 ? (
@@ -318,9 +318,8 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
                                     key={entry.id} 
                                     entry={entry} 
                                     onRestore={(content) => {
-                                        if(confirm("Restore this version? This will replace your current text.")) {
+                                        if(confirm("Replace your current text with this previous version?")) {
                                             onContentChange(content);
-                                            // Optional: Scroll to text area
                                         }
                                     }} 
                                 />
@@ -328,8 +327,8 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({
                         </div>
                     ) : (
                         <div className="text-center py-8 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-                            <p className="text-slate-500 text-sm">No saved versions yet.</p>
-                            <p className="text-xs text-slate-400 mt-1">Click the <strong>Save Version</strong> button to create a checkpoint.</p>
+                            <p className="text-slate-500 text-sm">No previous versions yet.</p>
+                            <p className="text-xs text-slate-400 mt-1">Click <strong>Keep this Version</strong> to save your current work.</p>
                         </div>
                     )}
                 </div>
@@ -367,8 +366,8 @@ export const WellnessPlan: React.FC<WellnessPlanProps> = (props) => {
     <div className="h-full w-full bg-slate-50/50 overflow-y-auto">
       <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24">
         <div className="text-center mb-8">
-            <span className="inline-block px-3 py-1 bg-sky-100 text-sky-700 text-xs font-bold rounded-full uppercase tracking-widest mb-3">Stability Framework</span>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">Your Mental Wellness Plan</h2>
+            <span className="inline-block px-3 py-1 bg-sky-100 text-sky-700 text-xs font-bold rounded-full uppercase tracking-widest mb-3">Your Foundation</span>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">Your Mental Wellness Journey</h2>
             
             <div className="flex justify-center mt-8">
                 <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex items-center">
@@ -376,13 +375,13 @@ export const WellnessPlan: React.FC<WellnessPlanProps> = (props) => {
                         onClick={() => setViewMode('build')}
                         className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${viewMode === 'build' ? 'bg-sky-500 text-white shadow-lg shadow-sky-100' : 'text-slate-400 hover:text-slate-600'}`}
                     >
-                        <WandSparklesIcon /> Build Mode
+                        <WandSparklesIcon /> Writing Mode
                     </button>
                     <button 
                         onClick={() => setViewMode('manual')}
                         className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${viewMode === 'manual' ? 'bg-sky-500 text-white shadow-lg shadow-sky-100' : 'text-slate-400 hover:text-slate-600'}`}
                     >
-                        <DocumentTextIcon /> View Manual
+                        <DocumentTextIcon /> My Story
                     </button>
                 </div>
             </div>
@@ -390,9 +389,9 @@ export const WellnessPlan: React.FC<WellnessPlanProps> = (props) => {
         
         {viewMode === 'build' ? (
             <div className="space-y-6 animate-view">
-                <div className="bg-sky-50 border border-sky-100 p-6 rounded-3xl mb-8">
+                <div className="bg-sky-50 border border-sky-100 p-6 rounded-3xl mb-8 text-center">
                     <p className="text-sm text-sky-800 font-medium leading-relaxed">
-                        Fill out each section below at your own pace. Click <strong>Save Version</strong> to create a checkpoint. You can view your consolidated guide anytime in <strong>Manual Mode</strong>.
+                        These notes are for you. Use them to map out what keeps you steady. Everything is private and kept securely.
                     </p>
                 </div>
                 {(Object.keys(plan) as PlanKey[]).map((key) => (

@@ -8,7 +8,8 @@ import {
   CheckIcon,
   WandSparklesIcon,
   MapIcon,
-  FireIcon
+  FireIcon,
+  BrainIcon
 } from './Icons';
 import { AnimatedResilios } from './AnimatedResilios';
 
@@ -40,13 +41,42 @@ const StepItem: React.FC<{ number: string; title: string; description: string }>
     </div>
 );
 
-const BenefitItem: React.FC<{ text: string }> = ({ text }) => (
-    <div className="flex items-center gap-3 text-slate-700">
-        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-            <CheckIcon />
-        </div>
-        <span className="text-base font-bold text-slate-700">{text}</span>
+const PlanColumn: React.FC<{ 
+  title: string; 
+  price: string; 
+  description: string; 
+  features: string[]; 
+  isPremium?: boolean; 
+  onAction: () => void 
+}> = ({ title, price, description, features, isPremium, onAction }) => (
+  <div className={`flex flex-col p-8 rounded-[2.5rem] border ${isPremium ? 'bg-slate-900 text-white border-slate-800 shadow-2xl shadow-sky-200/20' : 'bg-white text-slate-900 border-slate-100 shadow-sm'}`}>
+    <div className="mb-8">
+      <h3 className="text-2xl font-black tracking-tight mb-2">{title}</h3>
+      <div className="flex items-baseline gap-1 mb-4">
+        <span className="text-4xl font-black">{price}</span>
+        <span className={isPremium ? 'text-slate-400' : 'text-slate-500'}>{price === 'Free' ? '' : '/mo'}</span>
+      </div>
+      <p className={`text-sm font-medium leading-relaxed ${isPremium ? 'text-slate-400' : 'text-slate-500'}`}>{description}</p>
     </div>
+    
+    <ul className="space-y-4 mb-10 flex-1">
+      {features.map((f, i) => (
+        <li key={i} className="flex items-start gap-3">
+          <div className={`mt-1 shrink-0 ${isPremium ? 'text-sky-400' : 'text-emerald-500'}`}>
+            <CheckIcon />
+          </div>
+          <span className="text-sm font-bold">{f}</span>
+        </li>
+      ))}
+    </ul>
+    
+    <button 
+      onClick={onAction}
+      className={`w-full py-4 rounded-2xl font-black transition-all active:scale-95 ${isPremium ? 'bg-sky-500 hover:bg-sky-600 text-white shadow-xl shadow-sky-500/20' : 'bg-slate-50 hover:bg-slate-100 text-slate-900'}`}
+    >
+      {isPremium ? 'Explore Premium Features' : 'Start Free Forever'}
+    </button>
+  </div>
 );
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin }) => {
@@ -84,22 +114,64 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin 
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 to-indigo-600">Practice.</span>
                     </h1>
                     <p className="text-xl md:text-2xl text-slate-500 max-w-xl mb-12 leading-relaxed font-medium">
-                        Resilios helps you map your triggers, track your energy, and navigate tough moments with a companion who truly understands.
+                        Resilios is free for essential wellness tracking, while Premium offers a deeper, more personal experience for those who want it.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-4">
                         <button onClick={onGetStarted} className="px-10 py-5 text-lg font-black text-white bg-sky-500 rounded-3xl shadow-2xl shadow-sky-200 hover:bg-sky-600 hover:-translate-y-1 active:scale-95 transition-all">
-                            Start Your 7-Day Trial
+                            Try Premium Features
                         </button>
                         <button onClick={onLogin} className="px-10 py-5 text-lg font-black text-slate-900 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-all">
                             Sign In
                         </button>
                     </div>
+                    <p className="mt-6 text-xs font-bold text-slate-400 uppercase tracking-widest px-2">Includes a 7-day trial of all features</p>
                 </div>
                 <div className="relative hidden lg:flex justify-center items-center animate-pop">
                     <div className="absolute inset-0 bg-sky-50 rounded-full blur-3xl opacity-30"></div>
                     <AnimatedResilios emotion="supportive" size={450} />
                 </div>
             </div>
+        </section>
+
+        {/* PRICING COMPARISON SECTION */}
+        <section className="py-32 bg-slate-50/50">
+          <div className="max-w-5xl mx-auto px-6">
+            <div className="text-center mb-20">
+              <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight mb-6">Choose your path to stability.</h2>
+              <p className="text-lg text-slate-500 max-w-2xl mx-auto font-medium">Resilios is always here for you. Use our core tools for free, or unlock deep immersion with a premium membership.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+              <PlanColumn 
+                title="Free Forever"
+                price="Free"
+                description="The core essentials to build your foundation and stay grounded daily."
+                features={[
+                  "Personal Wellness Operating Manual",
+                  "Daily Mood Check-ins & Notes",
+                  "Local Crisis Resource Map",
+                  "Secure Encryption for Privacy",
+                  "Community Support Chat (Basic)"
+                ]}
+                onAction={onGetStarted}
+              />
+              <PlanColumn 
+                isPremium
+                title="Premium Support"
+                price="$4.99"
+                description="Advanced AI companionship and deep pattern analysis for long-term growth."
+                features={[
+                  "Everything in Free, plus:",
+                  "Live Voice Interaction with Resilios",
+                  "Unlimited Messaging & Support",
+                  "Deep Pattern AI Wellness Insights",
+                  "Personalized Guided Meditations",
+                  "Stability Guide Synthesis"
+                ]}
+                onAction={onGetStarted}
+              />
+            </div>
+          </div>
         </section>
 
         {/* THE MISSION SECTION */}
@@ -109,7 +181,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin 
                 <div className="flex flex-col md:flex-row gap-16 items-center">
                     <div className="w-full md:w-1/3 shrink-0">
                         <div className="aspect-square bg-white/5 rounded-[3rem] border border-white/10 flex items-center justify-center p-8">
-                            <img src={IMAGES.avatar} alt="Jack" className="w-full h-full rounded-[2.5rem] object-cover grayscale opacity-80" />
+                            <img src={IMAGES.avatar} alt="Resilios" className="w-full h-full rounded-[2.5rem] object-cover grayscale opacity-80" />
                         </div>
                     </div>
                     <div>
@@ -210,15 +282,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin 
             </div>
         </section>
 
-        {/* TRIAL & PRICING SECTION */}
+        {/* TRIAL CTA SECTION */}
         <section className="py-32 bg-white">
             <div className="max-w-4xl mx-auto px-6 text-center">
                 <div className="bg-slate-900 rounded-[3rem] p-12 md:p-20 text-white shadow-2xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-64 h-64 bg-sky-500/10 blur-[100px]"></div>
                     <div className="relative z-10">
-                        <h2 className="text-4xl md:text-6xl font-black mb-8 tracking-tighter">Start Your Free 7-Day Trial.</h2>
+                        <h2 className="text-4xl md:text-6xl font-black mb-8 tracking-tighter">Experience Premium.</h2>
                         <p className="text-sky-100/60 text-xl mb-12 max-w-2xl mx-auto font-medium">
-                            Access every premium feature instantly. If you choose not to subscribe for $4.99/mo after 7 days, your basic features stay free forever.
+                            Access every premium feature instantly with a 7-day trial. If you choose not to subscribe after, your basic features stay free forever.
                         </p>
                         <div className="flex flex-col sm:flex-row justify-center gap-6">
                             <button onClick={onGetStarted} className="px-12 py-5 text-xl font-black text-slate-900 bg-white rounded-[2rem] hover:bg-sky-400 hover:text-white transition-all active:scale-95 shadow-xl">
@@ -271,9 +343,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin 
               </div>
           </div>
           <div className="max-w-7xl mx-auto mt-24 pt-8 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">© {new Date().getFullYear()} The Resilient Mind Co. Antofagasta, Chile.</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">© {new Date().getFullYear()} The Resilient Mind Co.</p>
           </div>
       </footer>
     </div>
   );
 };
+
+const BenefitItem: React.FC<{ text: string }> = ({ text }) => (
+    <div className="flex items-center gap-3 text-slate-700">
+        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+            <CheckIcon />
+        </div>
+        <span className="text-base font-bold text-slate-700">{text}</span>
+    </div>
+);

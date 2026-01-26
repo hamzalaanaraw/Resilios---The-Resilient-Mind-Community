@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { doc, setDoc, updateDoc, onSnapshot, collection, query, orderBy, limit, addDoc, deleteDoc } from "firebase/firestore";
@@ -8,7 +9,7 @@ import { WellnessPlan } from './components/WellnessPlan';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { CrisisModal } from './components/CrisisModal';
 import { DailyFocus } from './components/DailyFocus';
-import { Message, WellnessPlanData, View, Attachment, CheckInData, LiveConversation, SavedMeditation, Notification, WellnessPlanEntry } from './types';
+import { Message, WellnessPlanData, View, Attachment, CheckInData, LiveConversation, SavedMeditation, Notification, WellnessPlanEntry, MapSearch } from './types';
 import { CRISIS_TRIGGER_PHRASES, INITIAL_WELLNESS_PLAN, SYSTEM_PROMPT } from './constants';
 import { Nav } from './components/Nav';
 import { useAuth } from './contexts/AuthContext';
@@ -44,6 +45,7 @@ const App: React.FC = () => {
   const [notification, setNotification] = useState<Notification | null>(null);
   const [checkInHistory, setCheckInHistory] = useState<CheckInData[]>([]);
   const [liveHistory, setLiveHistory] = useState<LiveConversation[]>([]);
+  const [mapSearchHistory, setMapSearchHistory] = useState<MapSearch[]>([]);
   const [initError, setInitError] = useState<string | null>(null);
   const [isNavOpen, setIsNavOpen] = useState(false);
 
@@ -121,11 +123,25 @@ const App: React.FC = () => {
         }));
     });
 
+    const mapHistoryRef = collection(db, "users", user.uid, "map_searches");
+    const qMapHistory = query(mapHistoryRef, orderBy("timestamp", "desc"), limit(10));
+    const unsubMapHistory = onSnapshot(qMapHistory, (snap) => {
+        setMapSearchHistory(snap.docs.map(d => {
+            const data = d.data();
+            return {
+                id: d.id,
+                query: data.query,
+                timestamp: data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp)
+            } as MapSearch;
+        }));
+    });
+
     return () => {
       unsubUser();
       unsubCheckins();
       unsubMeditations();
       unsubLive();
+      unsubMapHistory();
     };
   }, [user]);
 
@@ -195,8 +211,8 @@ const App: React.FC = () => {
     }
   }, [hasPremiumAccess, usage.count, wellnessPlan, user, latestMood, dailyChallenge.completed]);
 
-  const handleMapSearch = async (query: string) => {
-    if (!aiRef.current) return;
+  const handleMapSearch = async (searchQuery: string) => {
+    if (!aiRef.current || !user) return;
     setIsSearchingMap(true);
     try {
       let lat = 37.78193; 
@@ -208,10 +224,16 @@ const App: React.FC = () => {
       }
       const response = await aiRef.current.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `Find ${query} near me. provide a list with names and Google Maps links.`,
+        contents: `Find ${searchQuery} near me. provide a list with names and Google Maps links.`,
         config: { tools: [{googleMaps: {}}], toolConfig: { retrievalConfig: { latLng: { latitude: lat, longitude: lng } } } },
       });
-      setMapResults(response.candidates?.[0]?.groundingMetadata?.groundingChunks || []);
+      const results = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      setMapResults(results);
+
+      // Save search to history if results found or as an attempt
+      const mapHistoryRef = collection(db, "users", user.uid, "map_searches");
+      await addDoc(mapHistoryRef, { query: searchQuery, timestamp: new Date() });
+
     } catch (e) {
       setNotification({ id: 'map-err', type: 'error', message: "Resource search failed." });
     } finally {
@@ -362,7 +384,7 @@ const App: React.FC = () => {
               <WellnessPlan plan={wellnessPlan} synthesis={planSynthesis} isSynthesizing={isSynthesizing} onSynthesize={handleSynthesizePlan} onPlanChange={async (p) => { setWellnessPlan(p); await updateDoc(doc(db, "users", user.uid), { wellnessPlan: p }); }} onGeneratePrompts={handleGeneratePrompts} onSaveEntry={handleSaveEntry} isGeneratingPrompts={isGeneratingPrompts} initError={initError} isGeneratingMeditation={isGeneratingMeditation} generatedMeditationScript={generatedMeditationScript} savedMeditations={savedMeditations} onGenerateMeditation={handleGenerateMeditation} onPlayMeditation={() => {}} onSaveMeditation={handleSaveMeditation} onDeleteMeditation={handleDeleteMeditation} />
             )}
             {view === 'calendar' && <WellnessCalendar history={checkInHistory} wellnessPlan={wellnessPlan} insights="" isGenerating={false} onGenerateInsights={() => {}} initError={null} />}
-            {view === 'map' && <MapComponent onSearch={handleMapSearch} isLoading={isSearchingMap} results={mapResults} userLocation={userLocation} initError={initError} />}
+            {view === 'map' && <MapComponent onSearch={handleMapSearch} isLoading={isSearchingMap} results={mapResults} history={mapSearchHistory} userLocation={userLocation} initError={initError} />}
             {view === 'liveAvatar' && hasPremiumAccess && <LiveAvatarView ai={aiRef.current} onSaveConversation={handleSaveLiveConversation} />}
             {view === 'liveHistory' && <LiveHistoryPage history={liveHistory} />}
             {view === 'mission' && <MissionPage />}
