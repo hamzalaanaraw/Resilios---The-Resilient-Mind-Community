@@ -220,30 +220,30 @@ const App: React.FC = () => {
       const userMsg: Message = { 
         id: crypto.randomUUID(), 
         role: 'user', 
-        text: `Mood log: ${mood}/10. ${notes ? `Note: ${notes}` : ""}`, 
+        text: `I just logged my mood as ${mood}/10. ${notes ? `Here's what's on my mind: ${notes}` : ""}`, 
         timestamp: new Date() 
       };
       setAllMessages(prev => [...prev, userMsg]);
 
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `USER_CHECK_IN: Mood ${mood}/10, Notes: ${notes || "None"}\n\nValidate the user as a peer and suggest one small micro-step based on their state.`,
+        contents: `USER_CHECK_IN: Mood ${mood}/10, Notes: ${notes || "None"}\n\nRespond briefly as Resilios (a peer). Validate the feeling and offer one tiny micro-step based on their Wellness Plan if relevant.`,
         config: { systemInstruction: SYSTEM_PROMPT }
       });
 
       const modelMsg: Message = { 
         id: crypto.randomUUID(), 
         role: 'model', 
-        text: result.text || 'Thank you for checking in.', 
+        text: result.text || 'I hear you. Thank you for sharing how you’re doing.', 
         timestamp: new Date() 
       };
       setAllMessages(prev => [...prev, modelMsg]);
       
       setView('chat');
-      setNotification({ id: 'checkin', type: 'success', message: "Mood logged." });
+      setNotification({ id: 'checkin', type: 'success', message: "Mood logged and analyzed." });
 
     } catch (e) {
-      setNotification({ id: 'checkin-err', type: 'error', message: "Couldn't generate response." });
+      setNotification({ id: 'checkin-err', type: 'error', message: "Logged, but I couldn't generate a response." });
     } finally {
       setIsLoading(false);
     }
@@ -251,14 +251,13 @@ const App: React.FC = () => {
 
   const handleGenerateCalendarInsights = async () => {
     if (!aiRef.current || !user || checkInHistory.length < 3) {
-      setNotification({ id: 'insight-min', type: 'info', message: "You need at least 3 check-ins to unlock AI insights." });
+      setNotification({ id: 'insight-min', type: 'info', message: "I need at least 3 check-ins to start finding patterns." });
       return;
     }
     
     setIsGeneratingCalendarInsights(true);
     try {
-      // Analyze last 7 check-ins (or all if fewer)
-      const dataForAnalysis = checkInHistory.slice(0, 7).map(h => ({
+      const dataForAnalysis = checkInHistory.slice(0, 10).map(h => ({
         mood: h.mood,
         notes: h.notes,
         date: h.date.toDateString()
@@ -266,7 +265,7 @@ const App: React.FC = () => {
 
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `MOOD_HISTORY: ${JSON.stringify(dataForAnalysis)}\nWELLNESS_PLAN: ${JSON.stringify(wellnessPlan)}\n\nAs Resilios, identify any subtle mood patterns (highs/lows/triggers). Cross-reference with their anchor points in the plan. Offer a "Resilience Theme" for their next 3 days. Use Markdown formatting.`,
+        contents: `MOOD_HISTORY: ${JSON.stringify(dataForAnalysis)}\nWELLNESS_PLAN: ${JSON.stringify(wellnessPlan)}\n\nAs Resilios, analyze these patterns. Look for early warning signs or resilience anchors being used. Provide a "Stability Forecast" for the next 3 days. Use warm, Markdown-formatted peer support language.`,
         config: { systemInstruction: SYSTEM_PROMPT }
       });
 
@@ -275,7 +274,7 @@ const App: React.FC = () => {
       await updateDoc(doc(db, "users", user.uid), { calendarInsights: insights });
       setNotification({ id: 'insight-success', type: 'success', message: "Insights updated." });
     } catch (e) {
-      setNotification({ id: 'insight-err', type: 'error', message: "Failed to generate patterns." });
+      setNotification({ id: 'insight-err', type: 'error', message: "Failed to analyze patterns." });
     } finally {
       setIsGeneratingCalendarInsights(false);
     }
@@ -301,7 +300,7 @@ const App: React.FC = () => {
       setMapResults(results);
       await addDoc(collection(db, "users", user.uid, "map_searches"), { query: searchQuery, timestamp: new Date() });
     } catch (e) {
-      setNotification({ id: 'map-err', type: 'error', message: "Search failed." });
+      setNotification({ id: 'map-err', type: 'error', message: "Resource search failed." });
     } finally {
       setIsSearchingMap(false);
     }
@@ -315,7 +314,7 @@ const App: React.FC = () => {
       createdAt: new Date().toISOString()
     });
     setGeneratedMeditationScript("");
-    setNotification({ id: 'saved', type: 'success', message: "Meditation saved!" });
+    setNotification({ id: 'saved', type: 'success', message: "Saved to your toolbox." });
   };
 
   const handleDeleteMeditation = async (id: string) => {
@@ -334,13 +333,13 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Based on this data, create a cohesive "Stability Guide": ${JSON.stringify(wellnessPlan)}`
+        contents: `Based on this wellness plan: ${JSON.stringify(wellnessPlan)}, synthesize a cohesive "Stability Guide" in Markdown. Focus on strengths and proactive steps.`
       });
       const synthesis = result.text || '';
       setPlanSynthesis(synthesis);
       await updateDoc(doc(db, "users", user.uid), { planSynthesis: synthesis });
     } catch (e) {
-      setNotification({ id: 'synth-err', type: 'error', message: "Synthesis failed." });
+      setNotification({ id: 'synth-err', type: 'error', message: "Failed to synthesize your guide." });
     } finally {
       setIsSynthesizing(false);
     }
@@ -352,12 +351,13 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Generate 3 personalized journal prompts for this plan: ${JSON.stringify(wellnessPlan)}`
+        contents: `Generate 3 personalized, therapeutic journal prompts based on this user's current wellness plan: ${JSON.stringify(wellnessPlan)}`
       });
       const content = result.text || '';
       const newPlan = { ...wellnessPlan, journalPrompts: { ...wellnessPlan.journalPrompts, content } };
       setWellnessPlan(newPlan);
       await updateDoc(doc(db, "users", user.uid), { wellnessPlan: newPlan });
+      setNotification({ id: 'prompts', type: 'success', message: "New prompts generated." });
     } catch (e) {
       setNotification({ id: 'prompt-err', type: 'error', message: "Failed to generate prompts." });
     } finally {
@@ -381,11 +381,11 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Create a short meditation for a mood of ${latestMood || 5}/10.`
+        contents: `Create a short, grounded meditation for someone feeling at a mood of ${latestMood || 5}/10. Focus on deep breathing and physical safety.`
       });
       setGeneratedMeditationScript(result.text || '');
     } catch (e) {
-      setNotification({ id: 'med-err', type: 'error', message: "Failed to generate meditation." });
+      setNotification({ id: 'med-err', type: 'error', message: "Failed to create meditation." });
     } finally {
       setIsGeneratingMeditation(false);
     }
