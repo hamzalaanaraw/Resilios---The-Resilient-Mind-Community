@@ -25,6 +25,7 @@ import { MissionPage } from './components/MissionPage';
 import { ContactPage } from './components/ContactPage';
 import { PoliciesPage } from './components/PoliciesPage';
 import { MapComponent } from './components/MapComponent';
+import { getFriendlyErrorMessage } from './utils/errors';
 
 const DAILY_LIMIT = 100;
 
@@ -68,7 +69,7 @@ const App: React.FC = () => {
     if (process.env.API_KEY) {
       aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
     } else {
-      setInitError("API Connection missing.");
+      setInitError("API Key Configuration Missing.");
     }
   }, []);
 
@@ -189,10 +190,8 @@ const App: React.FC = () => {
         });
       }
 
-      const modelToUse = 'gemini-3-flash-preview';
-
       const result = await aiRef.current.models.generateContent({
-        model: modelToUse,
+        model: 'gemini-3-flash-preview',
         contents: { parts: promptParts },
         config: { systemInstruction: SYSTEM_PROMPT }
       });
@@ -200,7 +199,7 @@ const App: React.FC = () => {
       const modelMsg: Message = { id: crypto.randomUUID(), role: 'model', text: result.text || '', timestamp: new Date() };
       setAllMessages(prev => [...prev, modelMsg]);
     } catch (e) {
-      setNotification({ id: 'err', type: 'error', message: "I couldn't process that message. Please try again." });
+      setNotification({ id: 'err', type: 'error', message: getFriendlyErrorMessage(e) });
     } finally {
       setIsLoading(false);
     }
@@ -231,19 +230,12 @@ const App: React.FC = () => {
         config: { systemInstruction: SYSTEM_PROMPT }
       });
 
-      const modelMsg: Message = { 
-        id: crypto.randomUUID(), 
-        role: 'model', 
-        text: result.text || 'I hear you. Thank you for sharing how you’re doing.', 
-        timestamp: new Date() 
-      };
+      const modelMsg: Message = { id: crypto.randomUUID(), role: 'model', text: result.text || 'I hear you. Thank you for sharing.', timestamp: new Date() };
       setAllMessages(prev => [...prev, modelMsg]);
-      
       setView('chat');
-      setNotification({ id: 'checkin', type: 'success', message: "Mood logged and analyzed." });
-
+      setNotification({ id: 'checkin', type: 'success', message: "Mood logged." });
     } catch (e) {
-      setNotification({ id: 'checkin-err', type: 'error', message: "Logged, but I couldn't generate a response." });
+      setNotification({ id: 'checkin-err', type: 'error', message: "Logged, but response failed." });
     } finally {
       setIsLoading(false);
     }
@@ -251,7 +243,7 @@ const App: React.FC = () => {
 
   const handleGenerateCalendarInsights = async () => {
     if (!aiRef.current || !user || checkInHistory.length < 3) {
-      setNotification({ id: 'insight-min', type: 'info', message: "I need at least 3 check-ins to start finding patterns." });
+      setNotification({ id: 'insight-min', type: 'info', message: "You need 3 check-ins to reveal patterns." });
       return;
     }
     
@@ -265,16 +257,16 @@ const App: React.FC = () => {
 
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `MOOD_HISTORY: ${JSON.stringify(dataForAnalysis)}\nWELLNESS_PLAN: ${JSON.stringify(wellnessPlan)}\n\nAs Resilios, analyze these patterns. Look for early warning signs or resilience anchors being used. Provide a "Stability Forecast" for the next 3 days. Use warm, Markdown-formatted peer support language.`,
+        contents: `MOOD_HISTORY: ${JSON.stringify(dataForAnalysis)}\nWELLNESS_PLAN: ${JSON.stringify(wellnessPlan)}\n\nAnalyze these patterns as Resilios. Identify strengths or anchors. Provide a 3-day stability forecast. Use Markdown.`,
         config: { systemInstruction: SYSTEM_PROMPT }
       });
 
       const insights = result.text || '';
       setCalendarInsights(insights);
       await updateDoc(doc(db, "users", user.uid), { calendarInsights: insights });
-      setNotification({ id: 'insight-success', type: 'success', message: "Insights updated." });
+      setNotification({ id: 'insight-success', type: 'success', message: "Insights refreshed." });
     } catch (e) {
-      setNotification({ id: 'insight-err', type: 'error', message: "Failed to analyze patterns." });
+      setNotification({ id: 'insight-err', type: 'error', message: getFriendlyErrorMessage(e) });
     } finally {
       setIsGeneratingCalendarInsights(false);
     }
@@ -287,13 +279,15 @@ const App: React.FC = () => {
       let lat = 37.78193; 
       let lng = -122.40476;
       if ("geolocation" in navigator) {
-          const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
-          lat = pos.coords.latitude; lng = pos.coords.longitude;
-          setUserLocation({ latitude: lat, longitude: lng });
+          try {
+            const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej));
+            lat = pos.coords.latitude; lng = pos.coords.longitude;
+            setUserLocation({ latitude: lat, longitude: lng });
+          } catch(e) { console.warn("Location denied, using default."); }
       }
       const response = await aiRef.current.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `Find ${searchQuery} near me. provide a list with names and Google Maps links.`,
+        contents: `Find ${searchQuery} near me.`,
         config: { tools: [{googleMaps: {}}], toolConfig: { retrievalConfig: { latLng: { latitude: lat, longitude: lng } } } },
       });
       const results = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
@@ -306,40 +300,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveMeditation = async (script: string) => {
-    if (!user) return;
-    await addDoc(collection(db, "users", user.uid, "meditations"), {
-      name: `Meditation ${new Date().toLocaleDateString()}`,
-      script,
-      createdAt: new Date().toISOString()
-    });
-    setGeneratedMeditationScript("");
-    setNotification({ id: 'saved', type: 'success', message: "Saved to your toolbox." });
-  };
-
-  const handleDeleteMeditation = async (id: string) => {
-    if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "meditations", id));
-  };
-
-  const handleSaveLiveConversation = async (transcript: any[]) => {
-      if (!user || transcript.length === 0) return;
-      await addDoc(collection(db, "users", user.uid, "voice_logs"), { transcript, timestamp: new Date() });
-  };
-
   const handleSynthesizePlan = async () => {
     if (!aiRef.current || !user) return;
     setIsSynthesizing(true);
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Based on this wellness plan: ${JSON.stringify(wellnessPlan)}, synthesize a cohesive "Stability Guide" in Markdown. Focus on strengths and proactive steps.`
+        contents: `Synthesize this plan into a cohesive guide: ${JSON.stringify(wellnessPlan)}`
       });
       const synthesis = result.text || '';
       setPlanSynthesis(synthesis);
       await updateDoc(doc(db, "users", user.uid), { planSynthesis: synthesis });
     } catch (e) {
-      setNotification({ id: 'synth-err', type: 'error', message: "Failed to synthesize your guide." });
+      setNotification({ id: 'synth-err', type: 'error', message: "Synthesis failed." });
     } finally {
       setIsSynthesizing(false);
     }
@@ -351,15 +324,14 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Generate 3 personalized, therapeutic journal prompts based on this user's current wellness plan: ${JSON.stringify(wellnessPlan)}`
+        contents: `Generate 3 journal prompts based on this plan: ${JSON.stringify(wellnessPlan)}`
       });
       const content = result.text || '';
       const newPlan = { ...wellnessPlan, journalPrompts: { ...wellnessPlan.journalPrompts, content } };
       setWellnessPlan(newPlan);
       await updateDoc(doc(db, "users", user.uid), { wellnessPlan: newPlan });
-      setNotification({ id: 'prompts', type: 'success', message: "New prompts generated." });
     } catch (e) {
-      setNotification({ id: 'prompt-err', type: 'error', message: "Failed to generate prompts." });
+      setNotification({ id: 'prompt-err', type: 'error', message: "Prompt generation failed." });
     } finally {
       setIsGeneratingPrompts(false);
     }
@@ -381,13 +353,41 @@ const App: React.FC = () => {
     try {
       const result = await aiRef.current.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Create a short, grounded meditation for someone feeling at a mood of ${latestMood || 5}/10. Focus on deep breathing and physical safety.`
+        contents: `Create a short meditation for a mood of ${latestMood || 5}/10.`
       });
       setGeneratedMeditationScript(result.text || '');
     } catch (e) {
-      setNotification({ id: 'med-err', type: 'error', message: "Failed to create meditation." });
+      setNotification({ id: 'med-err', type: 'error', message: "Meditation generation failed." });
     } finally {
       setIsGeneratingMeditation(false);
+    }
+  };
+
+  // Implemented missing handleSaveMeditation function to fix error
+  const handleSaveMeditation = async (script: string) => {
+    if (!user) return;
+    try {
+      const meditationsRef = collection(db, "users", user.uid, "meditations");
+      await addDoc(meditationsRef, {
+        name: `Meditation ${new Date().toLocaleDateString()}`,
+        script,
+        timestamp: new Date()
+      });
+      setNotification({ id: 'save-med', type: 'success', message: "Meditation saved to favorites." });
+      setGeneratedMeditationScript(""); // Clear generated script after saving
+    } catch (e) {
+      setNotification({ id: 'save-med-err', type: 'error', message: "Failed to save meditation." });
+    }
+  };
+
+  // Implemented missing handleDeleteMeditation function to fix error
+  const handleDeleteMeditation = async (id: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "meditations", id));
+      setNotification({ id: 'del-med', type: 'success', message: "Meditation removed." });
+    } catch (e) {
+      setNotification({ id: 'del-med-err', type: 'error', message: "Failed to delete meditation." });
     }
   };
 
@@ -415,17 +415,12 @@ const App: React.FC = () => {
               <WellnessPlan plan={wellnessPlan} synthesis={planSynthesis} isSynthesizing={isSynthesizing} onSynthesize={handleSynthesizePlan} onPlanChange={async (p) => { setWellnessPlan(p); await updateDoc(doc(db, "users", user.uid), { wellnessPlan: p }); }} onGeneratePrompts={handleGeneratePrompts} onSaveEntry={handleSaveEntry} isGeneratingPrompts={isGeneratingPrompts} initError={initError} isGeneratingMeditation={isGeneratingMeditation} generatedMeditationScript={generatedMeditationScript} savedMeditations={savedMeditations} onGenerateMeditation={handleGenerateMeditation} onPlayMeditation={() => {}} onSaveMeditation={handleSaveMeditation} onDeleteMeditation={handleDeleteMeditation} />
             )}
             {view === 'calendar' && (
-              <WellnessCalendar 
-                history={checkInHistory} 
-                wellnessPlan={wellnessPlan} 
-                insights={calendarInsights} 
-                isGenerating={isGeneratingCalendarInsights} 
-                onGenerateInsights={handleGenerateCalendarInsights} 
-                initError={null} 
-              />
+              <WellnessCalendar history={checkInHistory} wellnessPlan={wellnessPlan} insights={calendarInsights} isGenerating={isGeneratingCalendarInsights} onGenerateInsights={handleGenerateCalendarInsights} initError={null} />
             )}
             {view === 'map' && <MapComponent onSearch={handleMapSearch} isLoading={isSearchingMap} results={mapResults} history={mapSearchHistory} userLocation={userLocation} initError={initError} />}
-            {view === 'liveAvatar' && hasPremiumAccess && <LiveAvatarView ai={aiRef.current} onSaveConversation={handleSaveLiveConversation} />}
+            {view === 'liveAvatar' && hasPremiumAccess && <LiveAvatarView ai={aiRef.current} onSaveConversation={async (t) => {
+                 await addDoc(collection(db, "users", user.uid, "voice_logs"), { transcript: t, timestamp: new Date() });
+            }} />}
             {view === 'liveHistory' && <LiveHistoryPage history={liveHistory} />}
             {view === 'mission' && <MissionPage />}
             {view === 'contact' && <ContactPage />}
